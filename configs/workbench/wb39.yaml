@@ -1,0 +1,6 @@
+extends: wb31
+assigns:
+  wb: "fsuae:workbench3.9"
+copy:
+  c: [CD, Echo, List, Wait, NoBorder, Copy, Assign, Which]
+  libs: [diskfont.library, workbench.library]

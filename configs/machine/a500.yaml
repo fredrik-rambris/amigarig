@@ -1,0 +1,7 @@
+extends: [ocs-ecs, "13"]
+fsuae:
+  amiga_model: A500
+  cpu: 68000
+  chip_memory: 512
+  slow_memory: 0
+  fast_memory: 0

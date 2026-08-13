@@ -1,0 +1,10 @@
+# Copy this to ~/.config/amigarig/local.yaml and fill in your real paths.
+# This is the one file where machine-specific facts belong -- everything in
+# configs/ (machine/kickstart/workbench/boot/run) should stay portable and
+# reference these assigns instead of hardcoding paths.
+
+fsuae_binary: "/usr/bin/fs-uae"
+
+assigns:
+  fsuae: "/home/boost/Data/Dokument/FS-UAE"
+  kickstart: "/home/boost/Data/Amiga/kickstart"

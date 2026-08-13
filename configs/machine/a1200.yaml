@@ -1,0 +1,8 @@
+extends: [aga, "31"]
+fsuae:
+  amiga_model: A1200
+  cpu: 68020
+  chip_memory: 2048
+  slow_memory: 0
+  fast_memory: 0
+  zorro2_memory: 0

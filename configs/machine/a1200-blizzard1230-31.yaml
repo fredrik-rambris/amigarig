@@ -1,0 +1,4 @@
+extends: a1200
+fsuae:
+  cpu: 68030
+  zorro2_memory: 8192

@@ -1,0 +1,4 @@
+assigns:
+  wb: "fsuae:workbench1.3"
+copy:
+  c: [CD, Echo, List, Wait, NoBorder]

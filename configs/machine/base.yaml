@@ -1,0 +1,29 @@
+copy_types:
+  c:       { src: "wb:C",     dest: "boot:c" }
+  libs:    { src: "wb:Libs",  dest: "boot:libs" }
+  l:       { src: "wb:L",     dest: "boot:l" }
+  devs:    { src: "wb:Devs",  dest: "boot:devs" }
+  fonts:   { src: "wb:Fonts", dest: "boot:fonts", handlers: [copy_font] }
+  project: { src: "project:", dest: "boot:",      handlers: [copy, copy_icons] }
+  s:       { src: "wb:S",     dest: "boot:s" }
+
+boot:
+  type: harddrive
+
+project:
+  type: harddrive
+
+fsuae:
+  accuracy: 1
+  floppy_drive_speed: 0
+  floppy_drive_volume_empty: 0
+  joystick_port_1: none
+  window_height: 1440
+  window_width: 1800
+  zoom: full
+  bezel: 0
+  serial_port: "tcp://127.0.0.1:1234"
+  console_debugger: 1
+  video_sync: 1
+  uae_rtc: MSM6242B
+  debug: 1

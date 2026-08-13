@@ -1,0 +1,20 @@
+[project]
+name = "amigarig"
+version = "0.1.0"
+description = "Layered-config wrapper around fs-uae for running/booting Amiga dev builds"
+requires-python = ">=3.10"
+dependencies = [
+    "PyYAML",
+    "amitools",
+    "platformdirs",
+]
+
+[project.scripts]
+amigarig = "amigarig.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["amigarig", "amigarig.config", "amigarig.writers"]

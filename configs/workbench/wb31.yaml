@@ -1,0 +1,5 @@
+assigns:
+  wb: "fsuae:workbench3.1"
+copy:
+  c: [CD, Echo, List, Wait, NoBorder, Copy]
+  libs: [diskfont.library]

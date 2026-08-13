@@ -1,0 +1,7 @@
+extends: minimal
++startup: ["NoBorder"]
+copy:
+  +c:
+    - { source: "/home/boost/bin/bgdbserver", destination: "bgdbserver" }
+fsuae:
+  console_debugger: 1
