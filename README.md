@@ -26,6 +26,22 @@ merged configuration, then:
 3. and either launches it (via `fs-uae` or `vamos`) or just leaves the
    built artifact behind.
 
+## Requirements
+
+- Python 3.10+
+- [FS-UAE](https://fs-uae.net/) — the default backend; not installed by
+  `pip install -e .`, install/build it separately and point
+  `local.yaml`'s `fsuae_binary` at it. Not needed if you only ever use
+  the `vamos` backend (`amitools`, which provides it, is a normal pip
+  dependency below).
+- Kickstart ROM file(s) for whichever machine profiles you use.
+- A Workbench install/tree per `workbench:` profile you use.
+
+The ROM and Workbench files aren't part of this repo or installable via
+pip (not redistributable) — bring your own, and point `local.yaml`'s
+assigns (`fsuae:`, `kickstart:`, ...) at wherever you keep them; see
+[`configs/local.example.yaml`](configs/local.example.yaml).
+
 ## Install
 
 ```sh
@@ -34,7 +50,16 @@ pip install -e .
 
 This installs the `amigarig` command (`amigarig.cli:main`) and pulls in
 `amitools` (used as a library for ADF/HDF writing and for the `vamos`
-backend), `PyYAML`, and `platformdirs`.
+backend), `PyYAML`, `platformdirs`, and `Jinja2`.
+
+**Windows**: `pip install -e .` works the same way, from an activated
+venv (`python -m venv .venv` then `.venv\Scripts\activate`) or via `py -m
+pip install -e .` — just make sure pip is reasonably recent (>=21.3, for
+PEP 660 editable installs). One feature has a real Windows-specific gap:
+`exec:`'s string form (a shell script) runs through `$SHELL`, falling
+back to `/bin/sh` — neither exists natively on Windows, so that needs a
+POSIX shell on PATH (WSL, Git Bash, ...); the list/argv form of `cmd`
+runs directly with no shell involved and is unaffected.
 
 ## Configuring
 
