@@ -230,3 +230,8 @@ def test_render_startup_sequence_config_and_assign_available():
         assigns=AssignTable({"wb": "/opt/workbench"}),
     )
     assert content == "68030 /opt/workbench\n"
+
+
+def test_render_startup_sequence_stem_filter_strips_extension():
+    content = render_startup_sequence(["{{ binary | stem }}"], "something.Asc", [])
+    assert content == "something\n"

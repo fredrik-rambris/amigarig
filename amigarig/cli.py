@@ -47,22 +47,25 @@ def load_project_local(cwd: Path) -> dict:
     return load_yaml_if_present(cwd / PROJECT_LOCAL_FILENAME)
 
 
-def relativize_binary(binary: str, cwd: Path) -> str:
-    """Strip cwd from an absolute binary path so it lands correctly under
-    "cd Project:" in the startup-sequence. Amiga side only ever sees cwd
-    mounted as project:, so an absolute host path is meaningless there --
-    e.g. run from /data/Coding/acbmtoilbm, "/data/Coding/acbmtoilbm/bin/x"
-    becomes "bin/x". Paths already relative are passed through untouched.
+def relativize_binary(binary: str, project_dir: Path) -> str:
+    """Strip `project_dir` from an absolute binary path so it lands
+    correctly under "cd Project:" in the startup-sequence. Amiga side only
+    ever sees `project_dir` mounted as project: (the current directory by
+    default, or wherever --project-dir/project.dir points), so an absolute
+    host path is meaningless there -- e.g. project_dir=/data/Coding/x,
+    "/data/Coding/x/bin/game" becomes "bin/game". Paths already relative
+    are passed through untouched (resolved against `project_dir` by
+    AmigaOS at boot time, not by amigarig).
     """
     path = Path(binary)
     if not path.is_absolute():
         return binary
     try:
-        rel = path.resolve().relative_to(cwd.resolve())
+        rel = path.resolve().relative_to(project_dir.resolve())
     except ValueError:
         raise SystemExit(
-            f"binary '{binary}' is not inside the current directory "
-            f"'{cwd}' (mounted as project:); pass a path relative to it"
+            f"binary '{binary}' is not inside '{project_dir}' (mounted as "
+            "project:); pass a path relative to it"
         )
     return rel.as_posix()
 
@@ -80,6 +83,16 @@ def main(argv: list[str] | None = None) -> int:
         "--fsuae-binary",
         default=None,
         help="defaults to fsuae_binary in <configs-dir>/local.yaml, then /usr/bin/fs-uae",
+    )
+    parser.add_argument(
+        "--project-dir",
+        default=None,
+        help="directory to mount as project: instead of the current directory "
+        "(relative paths are resolved against the current directory); "
+        "binary is resolved relative to this directory too. Also settable "
+        "as project.dir in config; this flag takes priority. Lets you "
+        "run from a repo root with the build output mounted as project: "
+        "without cd'ing into it first, e.g. --project-dir build game",
     )
     parser.add_argument(
         "--set", action="append", default=[], metavar="key=value", dest="overrides"
@@ -133,15 +146,19 @@ def main(argv: list[str] | None = None) -> int:
             args.fsuae_binary or local_layer.get("fsuae_binary") or "/usr/bin/fs-uae"
         )
         fsuae_binary = str(Path(fsuae_binary).expanduser())
+        project_dir_opt = args.project_dir or merged.get("project", {}).get("dir")
+        project_dir = (
+            Path(project_dir_opt).expanduser().resolve() if project_dir_opt else Path.cwd()
+        )
         binary = (
-            relativize_binary(args.binary, Path.cwd()) if args.binary is not None else None
+            relativize_binary(args.binary, project_dir) if args.binary is not None else None
         )
         config_verbosity = merged.get("verbose", 0)
         if isinstance(config_verbosity, bool):
             config_verbosity = 1 if config_verbosity else 0
         set_verbosity(max(args.verbose, int(config_verbosity)))
 
-        return run(merged, fsuae_binary, binary, args.args)
+        return run(merged, fsuae_binary, binary, args.args, project_dir=project_dir)
     except AmigarigError as e:
         logger.error(f"error: {e}")
         return 1

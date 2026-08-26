@@ -26,14 +26,28 @@ def _tmp_dir_factory(root: Path):
     return make
 
 
-def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[str]) -> int:
+def run(
+    merged_config: dict,
+    fsuae_binary: str,
+    binary: str | None,
+    args: list[str],
+    *,
+    project_dir: Path | None = None,
+) -> int:
     """`binary=None` means "rig-only": build + keep the configured targets
     (ADFs / directories) and stop -- no startup-sequence, no backend
     (fs-uae/vamos) launched at all. `boot.run: false` (build a target but
     still let a later CI step decide) is a separate, backend-level knob;
-    this is the "there's nothing to launch" case."""
+    this is the "there's nothing to launch" case.
+
+    `project_dir` is what gets mounted as `project:` -- defaults to the
+    current directory (cli.py resolves --project-dir/config's project.dir
+    against it before calling in, so by the time it gets here it's
+    already an absolute, resolved path)."""
+    project_dir = Path(project_dir) if project_dir is not None else Path(os.getcwd())
+
     assigns = AssignTable(merged_config.get("assigns", {}))
-    assigns.set("project", os.getcwd())
+    assigns.set("project", str(project_dir))
 
     tmp_root = Path(tempfile.mkdtemp(prefix="amigarig-"))
     make_tmp_dir = _tmp_dir_factory(tmp_root)
@@ -57,7 +71,7 @@ def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[s
             "type", "harddrive"
         ) == "harddrive" and "project" not in merged_config.get("copy", {}):
             # plain directory mount, nothing to build
-            project_target = Target("project", "mounted_dir", Path(os.getcwd()), None, True, True)
+            project_target = Target("project", "mounted_dir", project_dir, None, True, True)
         else:
             targets["project"] = make_target("project", project_cfg, assigns, make_tmp_dir)
             project_target = targets["project"]

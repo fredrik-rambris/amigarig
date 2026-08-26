@@ -176,7 +176,27 @@ project:
   type: harddrive
 ```
 
-### 4. Floppy load-speed testing
+### 4. Running from the repo root with a build output subfolder
+
+If your build lands in `build/` and you'd rather not `cd` there first
+(or want `project:` to be the build dir specifically, not the repo
+root), point `--project-dir` at it — `binary` is then resolved relative
+to that directory instead of the current one:
+
+```sh
+# from /data/Coding/FranticFreddy, with the built binary at build/game
+amigarig --config=dev --project-dir build game
+```
+
+Or set it once in config instead of passing the flag every time:
+
+```yaml
+# ./.amigarig.yaml
+project:
+  dir: build
+```
+
+### 5. Floppy load-speed testing
 
 Copy the project onto an actual `.adf` floppy image instead of mounting
 the directory, to test real floppy load behavior:
@@ -203,7 +223,7 @@ amigarig --config=a1200-blizzard1230-31 bin/game
 boots the `boot:` hard drive first, and AmigaOS auto-assigns `project:`
 to the floppy the same as it would a directory, so nothing else changes.
 
-### 5. One-disk release build (build only, no fs-uae)
+### 6. One-disk release build (build only, no fs-uae)
 
 Package project files straight onto the boot disk under a named folder
 and produce a real, standalone floppy image — no launch, useful as a CI
@@ -234,7 +254,7 @@ ends up instead of a deleted tmp file. `bin/game` is still needed here
 because the startup-sequence (`{{ binary }} {{ args }}`) is generated onto the
 disk for someone booting it for real later.
 
-### 6. Rig-only: just produce an artifact, run nothing
+### 7. Rig-only: just produce an artifact, run nothing
 
 For the simplest case — "give me a floppy/directory with these files on
 it, I'm not launching an emulator right now" — omit the binary entirely:
@@ -264,7 +284,7 @@ target(s), skips startup-sequence generation entirely, and stops. No
 at a single `boot.keep_as:` target rather than a split boot:/project:
 setup.
 
-### 7. Running under `vamos` instead of `fs-uae`
+### 8. Running under `vamos` instead of `fs-uae`
 
 `vamos` (also part of `amitools`, used here as a library) emulates the
 AmigaOS API surface for a single process rather than booting a whole

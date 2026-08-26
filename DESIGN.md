@@ -387,7 +387,10 @@ e.g. `{{ argsarr | map('amigaquote') | join(' ') }}`. `config` (the full
 merged config) and the `assign(...)` global are also available for the
 rare line that needs a config value or a real host path, and the
 `amigaquote` filter gives AmigaDOS-style CLI quoting (not shell quoting)
-for any value dropped into a line. Jinja's `{{ }}`/`{% %}` delimiters
+for any value dropped into a line. `stem`/`suffix`
+(`PurePosixPath.stem`/`.suffix`) strip/extract a filename's extension,
+e.g. `{{ binary | stem }}` for `"something.Asc"` -> `"something"`.
+Jinja's `{{ }}`/`{% %}` delimiters
 were chosen over the plain `str.format()` this used before because they
 almost never collide with real AmigaDOS script content, unlike bare
 `{`/`}`. Assign-style tokens (`Project:`) are left as literal AmigaDOS
@@ -536,7 +539,7 @@ amigarig/
   fsutil.py            # ci_resolve() and friends (case-insensitive filesystem walk + cache)
   copyspec.py          # normalize_copy_item(), ResolvedCopyItem dataclass, item resolution against assigns/ci_resolve, CopyError
   handlers.py          # copy, copy_font, copy_icons + a name->function registry, chaining
-  templating.py         # shared Jinja environment (assign() global, amigaquote filter) for exec: env: and startup: lines
+  templating.py         # shared Jinja environment (assign() global, amigaquote/stem/suffix filters) for exec: env: and startup: lines
   execspec.py            # exec: item normalization + execution (init/before/after stages), ExecError
   writers/
     __init__.py         # Writer protocol
@@ -597,6 +600,16 @@ amigarig --config=a1200-blizzard1230-31 [--set key=value ...] <binary> [args...]
   with the CLI flag as `max()`, so `-v` only ever raises verbosity, never
   suppresses a config-level `verbose: 2`. See "Error handling and
   logging" below.
+- `--project-dir <path>` mounts a directory other than the current one as
+  `project:` (relative paths resolved against the current directory) —
+  e.g. run from a repo root with a `build/` output dir, without `cd`ing
+  into it first: `amigarig --config dev --project-dir build game`.
+  `binary` (positional) and any absolute path passed as it are resolved
+  relative to `project_dir`, not the current directory, once this is set
+  (`cli.py`'s `relativize_binary`). Also settable as `project.dir` in
+  config; the flag takes priority. Runner-side, `runner.run()`'s
+  `project_dir` param defaults to `os.getcwd()` when omitted (unchanged
+  behavior for any caller that doesn't pass it, tests included).
 
 Typical CLion "External Tool" invocation:
 ```

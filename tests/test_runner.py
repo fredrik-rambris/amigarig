@@ -25,6 +25,50 @@ def test_rig_only_mode_builds_and_keeps_target_without_launching(tmp_path, monke
     assert not (keep_dir / "s" / "startup-sequence").exists()
 
 
+def test_project_dir_overrides_cwd_for_project_mount(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+
+    calls = []
+    monkeypatch.setattr(
+        "amigarig.runner.get_backend",
+        lambda name: calls.append(name) or (lambda ctx: ctx.assigns.resolve("project:")),
+    )
+
+    keep_dir = tmp_path / "artifact"
+    merged_config = {
+        "boot": {"type": "harddrive", "keep_as": str(keep_dir)},
+        "project": {"type": "harddrive"},
+        "startup": ["cd Project:"],
+    }
+
+    result = run(
+        merged_config, "/usr/bin/fs-uae", "game", [], project_dir=build_dir
+    )
+
+    assert result == build_dir
+
+
+def test_project_dir_defaults_to_cwd_when_not_given(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "amigarig.runner.get_backend",
+        lambda name: (lambda ctx: ctx.assigns.resolve("project:")),
+    )
+
+    keep_dir = tmp_path / "artifact"
+    merged_config = {
+        "boot": {"type": "harddrive", "keep_as": str(keep_dir)},
+        "project": {"type": "harddrive"},
+        "startup": ["cd Project:"],
+    }
+
+    result = run(merged_config, "/usr/bin/fs-uae", "game", [])
+
+    assert result == tmp_path
+
+
 def test_backend_dispatch_uses_configured_backend_name(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     calls = []

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from amigarig.cli import main
+from amigarig.cli import main, relativize_binary
 from amigarig.copyspec import CopyError
 from amigarig.log import logger
 
@@ -84,6 +84,73 @@ def test_verbose_2_from_config_means_debug(monkeypatch, tmp_path):
     main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR)])
 
     assert logger.getEffectiveLevel() == logging.DEBUG
+
+
+def test_relativize_binary_relative_path_passed_through(tmp_path):
+    assert relativize_binary("game", tmp_path / "build") == "game"
+
+
+def test_relativize_binary_absolute_path_under_project_dir(tmp_path):
+    build = tmp_path / "build"
+    build.mkdir()
+    assert relativize_binary(str(build / "game"), build) == "game"
+
+
+def test_relativize_binary_absolute_path_outside_project_dir_raises(tmp_path):
+    build = tmp_path / "build"
+    build.mkdir()
+    elsewhere = tmp_path / "elsewhere" / "game"
+    with pytest.raises(SystemExit):
+        relativize_binary(str(elsewhere), build)
+
+
+def test_project_dir_flag_passed_through_to_run(monkeypatch, tmp_path):
+    build = tmp_path / "build"
+    build.mkdir()
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    def fake_run(*a, project_dir, **k):
+        seen["project_dir"] = project_dir
+        return 0
+
+    monkeypatch.setattr("amigarig.cli.run", fake_run)
+    main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR), "--project-dir", "build"])
+
+    assert seen["project_dir"] == build.resolve()
+
+
+def test_project_dir_defaults_to_cwd_when_unset(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    def fake_run(*a, project_dir, **k):
+        seen["project_dir"] = project_dir
+        return 0
+
+    monkeypatch.setattr("amigarig.cli.run", fake_run)
+    main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR)])
+
+    assert seen["project_dir"] == tmp_path
+
+
+def test_project_dir_flag_takes_priority_over_config(monkeypatch, tmp_path):
+    (tmp_path / "from-flag").mkdir()
+    (tmp_path / "from-config").mkdir()
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".amigarig.yaml").write_text("project:\n  dir: from-config\n")
+    seen = {}
+
+    def fake_run(*a, project_dir, **k):
+        seen["project_dir"] = project_dir
+        return 0
+
+    monkeypatch.setattr("amigarig.cli.run", fake_run)
+    main(
+        ["--config", "a500", "--configs-dir", str(CONFIGS_DIR), "--project-dir", "from-flag"]
+    )
+
+    assert seen["project_dir"] == (tmp_path / "from-flag").resolve()
 
 
 def test_cli_v_and_config_verbose_combine_as_max(monkeypatch, tmp_path):

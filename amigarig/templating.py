@@ -11,10 +11,20 @@ back to item access for plain dicts, no special config wrapper needed) and
 a registered `assign` global function that expands an amigarig assign to
 its real host path, e.g. `"{{ assign('wb:') }}"`.
 
-Also registers the `amigaquote` filter (AmigaDOS CLI quoting -- not shell
-quoting), e.g. `"{{ some_value | amigaquote }}"`.
+Also registers a few small filters:
+- `amigaquote` (AmigaDOS CLI quoting -- not shell quoting), e.g.
+  `"{{ some_value | amigaquote }}"`.
+- `stem`/`suffix` (`pathlib.PurePosixPath` semantics -- binary/args are
+  always posix-style, see `cli.py`'s `relativize_binary`), e.g. given
+  `binary = "something.Asc"`: `"{{ binary | stem }}"` -> `"something"`,
+  `"{{ binary | suffix }}"` -> `".Asc"`. Like `Path.stem`/`Path.suffix`,
+  only the last dotted component is treated as the extension
+  (`"a.tar.gz" | stem` -> `"a.tar"`), and a directory prefix is dropped
+  too (`"bin/game.Asc" | stem` -> `"game"`).
 """
 from __future__ import annotations
+
+from pathlib import PurePosixPath
 
 import jinja2
 
@@ -35,6 +45,8 @@ def build_environment(assigns: AssignTable) -> jinja2.Environment:
     env = jinja2.Environment()
     env.globals["assign"] = lambda ref: str(assigns.resolve(ref))
     env.filters["amigaquote"] = amigaquote
+    env.filters["stem"] = lambda value: PurePosixPath(value).stem
+    env.filters["suffix"] = lambda value: PurePosixPath(value).suffix
     return env
 
 
