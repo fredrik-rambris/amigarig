@@ -9,6 +9,7 @@ from amigarig.execspec import (
     run_exec_item,
     run_exec_stage,
 )
+from amigarig.log import set_verbose
 
 
 def _tmp_dir_factory(tmp_path):
@@ -200,26 +201,26 @@ def test_run_exec_stage_runs_only_matching_stage_in_order(tmp_path):
     assert out_file.read_text().splitlines() == ["before1", "before2"]
 
 
-def test_run_exec_item_verbose_prints_argv_and_cwd(tmp_path, capsys):
+def test_run_exec_item_verbose_prints_argv_and_cwd(tmp_path, log_messages):
     assigns = AssignTable()
     item = normalize_exec_item({"cmd": ["true"]})
 
-    run_exec_item(
-        item, assigns=assigns, config={}, make_tmp_dir=_tmp_dir_factory(tmp_path), verbose=True
-    )
+    set_verbose(True)
+    run_exec_item(item, assigns=assigns, config={}, make_tmp_dir=_tmp_dir_factory(tmp_path))
 
-    out = capsys.readouterr().out
+    out = "\n".join(log_messages)
     assert "['true']" in out
     assert "cwd=" in out
 
 
-def test_run_exec_item_not_verbose_prints_nothing(tmp_path, capsys):
+def test_run_exec_item_not_verbose_prints_nothing(tmp_path, log_messages):
     assigns = AssignTable()
     item = normalize_exec_item({"cmd": ["true"]})
 
+    set_verbose(False)
     run_exec_item(item, assigns=assigns, config={}, make_tmp_dir=_tmp_dir_factory(tmp_path))
 
-    assert capsys.readouterr().out == ""
+    assert log_messages == []
 
 
 def test_run_exec_stage_validates_whole_list_up_front(tmp_path):

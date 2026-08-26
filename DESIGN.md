@@ -482,15 +482,19 @@ than a single script:
 amigarig/
   __init__.py
   cli.py              # argparse entrypoint, --config/--set/env var handling, top-level flow
+  errors.py            # AmigarigError base -- cli.py catches it for a clean one-line message instead of a traceback
+  log.py                # shared "[amigarig] "-prefixed logger; INFO by default, DEBUG under -v/verbose:
   config/
     __init__.py
-    registry.py       # loads YAML files per directory into named registries
+    registry.py       # loads YAML files per directory into named registries; load_yaml_file() raises ConfigLoadError on bad YAML
     merge.py          # the deep-merge + `+key` append algorithm (pure functions, no I/O)
     resolve.py         # flattens an extends chain into its raw per-file layers (flatten_chain), or one merged dict for scalar peeks (resolve_chain)
-  assigns.py           # assign table + resolve() resolver (cycle-guarded)
+  assigns.py           # assign table + resolve() resolver (cycle-guarded), AssignError
   fsutil.py            # ci_resolve() and friends (case-insensitive filesystem walk + cache)
-  copyspec.py          # normalize_copy_item(), ResolvedCopyItem dataclass, item resolution against assigns/ci_resolve
+  copyspec.py          # normalize_copy_item(), ResolvedCopyItem dataclass, item resolution against assigns/ci_resolve, CopyError
   handlers.py          # copy, copy_font, copy_icons + a name->function registry, chaining
+  templating.py         # shared Jinja environment (assign() global, amigaquote filter) for exec: env: and startup: lines
+  execspec.py            # exec: item normalization + execution (init/before/after stages), ExecError
   writers/
     __init__.py         # Writer protocol
     hostdir.py           # HostDirWriter
@@ -555,6 +559,36 @@ Typical CLion "External Tool" invocation:
 Program:    amigarig
 Arguments:  --config=a1200-blizzard1230-31 $TargetPath$ $Prompt$
 ```
+
+## Error handling and logging
+
+**`AmigarigError`** (`errors.py`) is the base class for "this is a bad
+config/environment, not an amigarig bug" errors: `AssignError` (unknown/
+cyclic assign), `CopyError` (missing copy source, `copyspec.py`),
+`ExecError` (`exec:` command failed past `failat`), `ConfigNotFoundError`
+(unknown `--config`/`extends:` name) and `ConfigLoadError` (bad YAML or a
+non-mapping top level, `config/registry.py`'s `load_yaml_file`). `cli.py`
+wraps its whole flow (registries → assemble → `run()`) in one
+`try/except AmigarigError`, logging the message and returning exit code
+1 — no traceback for something a user can just fix in their config. Any
+other exception is a real bug and is left to raise normally, traceback
+and all.
+
+**Logging** (`log.py`): a single `logging.getLogger("amigarig")`,
+formatted as `"[amigarig] %(message)s"` — no timestamps/level names, just
+enough to pick amigarig's own lines out of fs-uae/vamos/subprocess noise
+sharing the same terminal. INFO is the default (rigged-target summaries,
+`AmigarigError` messages); DEBUG is what `-v`/`--verbose`/`verbose: true`
+unlocks (`set_verbose()`, called once in `cli.py` after the merged config
+is known) — every `copy:` file written, every `exec:` command run, the
+backend launch line. Everything goes to stderr. No `verbose:` parameter
+is threaded through `run_copy`/`run_exec_stage`/`RunContext`/etc. any
+more — call sites just log at DEBUG unconditionally and the logger's
+level decides whether that's seen, which is also why tests assert on
+logger output (a handler attached directly to `amigarig.log.logger`) 
+rather than `capsys`: `logging.StreamHandler()` binds `sys.stderr` at
+construction time, so `capsys`'s later swap of `sys.stderr` isn't visible
+to it.
 
 ## Configs dir location
 

@@ -9,6 +9,7 @@ from .assigns import AssignTable
 from .copyspec import CopyError, normalize_copy_item, resolve_copy_item, _is_qualified
 from .fsutil import CaseInsensitiveResolver
 from .handlers import HandlerContext, run_handlers
+from .log import logger
 from .writers.hostdir import HostDirWriter
 from .writers.adfvolume import ADFVolumeWriter
 
@@ -78,8 +79,6 @@ def run_copy(
     copy_types: dict,
     targets: dict[str, Target],
     assigns: AssignTable,
-    *,
-    verbose: bool = False,
 ) -> None:
     """copy_spec: {type_name: [raw_item, ...]}; copy_types: {type_name: {src, dest, handlers}}"""
     ci = CaseInsensitiveResolver()
@@ -108,8 +107,7 @@ def run_copy(
                 raise CopyError(f"copy.{type_name}: {e} (item: {raw_item!r})") from None
 
             for expanded in run_handlers(resolved, handler_names, ctx):
-                if verbose:
-                    print(f"copy: {expanded.source} -> {expanded.dest}")
+                logger.debug(f"copy: {expanded.source} -> {expanded.dest}")
                 target.writer.write(expanded)
     # caller is responsible for calling target.writer.finalize() once all
     # writes (copy: entries + generated content like startup-sequence) are done

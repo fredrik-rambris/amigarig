@@ -72,7 +72,7 @@ def test_run_maps_directory_assigns_to_volumes(tmp_path, monkeypatch):
     assert f"project:{project_dir}" in volumes
 
 
-def test_run_skips_image_assigns_with_a_warning(tmp_path, monkeypatch, capsys):
+def test_run_skips_image_assigns_with_a_warning(tmp_path, monkeypatch, log_messages):
     monkeypatch.setattr("amitools.vamos.main.main", lambda cfg_dict=None, args=None: 0)
 
     boot_dir = tmp_path / "boot"
@@ -84,9 +84,9 @@ def test_run_skips_image_assigns_with_a_warning(tmp_path, monkeypatch, capsys):
     ctx = _ctx(tmp_path, assigns=assigns, boot=boot, project=project)
     vamos_backend.run(ctx)
 
-    err = capsys.readouterr().err
-    assert "project:" in err
-    assert "not a directory" in err or "image" in err
+    out = "\n".join(log_messages)
+    assert "project:" in out
+    assert "not a directory" in out or "image" in out
 
 
 def test_run_rejects_image_boot_target(tmp_path):

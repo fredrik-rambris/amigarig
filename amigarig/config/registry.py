@@ -6,9 +6,31 @@ from typing import Any
 
 import yaml
 
+from ..errors import AmigarigError
 
-class ConfigNotFoundError(KeyError):
+
+class ConfigNotFoundError(AmigarigError, KeyError):
     pass
+
+
+class ConfigLoadError(AmigarigError):
+    pass
+
+
+def load_yaml_file(path: Path) -> dict:
+    """Load one YAML file into a dict, raising `ConfigLoadError` (with the
+    file path) on a parse error or a non-mapping top level, instead of a
+    bare yaml.YAMLError traceback. A missing/empty file is `{}`."""
+    try:
+        with path.open() as fh:
+            data = yaml.safe_load(fh)
+    except yaml.YAMLError as e:
+        raise ConfigLoadError(f"{path}: invalid YAML ({e})") from None
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ConfigLoadError(f"{path}: top-level YAML must be a mapping")
+    return data
 
 
 class Registry:
@@ -23,12 +45,7 @@ class Registry:
         self._raw: dict[str, dict] = {}
         if self.directory.is_dir():
             for path in sorted(self.directory.glob("*.yaml")):
-                name = path.stem
-                with path.open() as fh:
-                    data = yaml.safe_load(fh) or {}
-                if not isinstance(data, dict):
-                    raise ValueError(f"{path}: top-level YAML must be a mapping")
-                self._raw[name] = data
+                self._raw[path.stem] = load_yaml_file(path)
 
     def __contains__(self, name: str) -> bool:
         return name in self._raw

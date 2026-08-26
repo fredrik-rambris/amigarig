@@ -20,10 +20,9 @@ target that needs to be reachable from a vamos run.
 """
 from __future__ import annotations
 
-import sys
-
 from ..config.merge import merge_chain
 from ..disktargets import Target
+from ..log import logger
 
 
 def _volume_specs(assigns, boot: Target, project: Target | None) -> list[str]:
@@ -33,10 +32,9 @@ def _volume_specs(assigns, boot: Target, project: Target | None) -> list[str]:
     specs = []
     for name in assigns.names():
         if name in image_targets:
-            print(
+            logger.warning(
                 f"vamos backend: skipping '{name}:' -- it's a floppy/hdf image, "
-                "not a directory vamos can mount as a volume",
-                file=sys.stderr,
+                "not a directory vamos can mount as a volume"
             )
             continue
         path = assigns.resolve(f"{name}:")
@@ -76,7 +74,6 @@ def run(ctx) -> int:
     # as vamos CLI args instead of via cfg_dict.
     vamos_args = [f"project:{ctx.binary}", *ctx.args]
 
-    if ctx.verbose:
-        print(f"exec (vamos): args={vamos_args} cfg={cfg_dict}")
+    logger.debug(f"exec (vamos): args={vamos_args} cfg={cfg_dict}")
 
     return vamos_main(cfg_dict=cfg_dict, args=vamos_args)

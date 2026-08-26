@@ -45,6 +45,7 @@ from typing import Callable
 
 from .assigns import AssignTable
 from .errors import AmigarigError
+from .log import logger
 from .templating import render_env
 
 VALID_STAGES = ("init", "before", "after")
@@ -85,7 +86,6 @@ def run_exec_item(
     assigns: AssignTable,
     config: dict,
     make_tmp_dir: Callable[[], Path],
-    verbose: bool = False,
 ) -> None:
     tmp_dir = make_tmp_dir()
 
@@ -109,13 +109,12 @@ def run_exec_item(
     input_path = assigns.resolve(item["input"]) if item["input"] else None
     output_path = assigns.resolve(item["output"]) if item["output"] else None
 
-    if verbose:
-        redirect = ""
-        if input_path is not None:
-            redirect += f" < {input_path}"
-        if output_path is not None:
-            redirect += f" > {output_path}"
-        print(f"exec ({item['stage']}): {argv} (cwd={cwd}){redirect}")
+    redirect = ""
+    if input_path is not None:
+        redirect += f" < {input_path}"
+    if output_path is not None:
+        redirect += f" > {output_path}"
+    logger.debug(f"exec ({item['stage']}): {argv} (cwd={cwd}){redirect}")
 
     stdin = open(input_path, "rb") if input_path else None
     stdout = open(output_path, "wb") if output_path else None
@@ -141,7 +140,6 @@ def run_exec_stage(
     assigns: AssignTable,
     config: dict,
     make_tmp_dir: Callable[[], Path],
-    verbose: bool = False,
 ) -> None:
     """Normalizes the whole list (so schema errors in a later stage's items
     surface immediately, even during an earlier stage) and runs just the
@@ -149,10 +147,4 @@ def run_exec_stage(
     normalized = [normalize_exec_item(raw) for raw in items]
     for exec_item in normalized:
         if exec_item["stage"] == stage:
-            run_exec_item(
-                exec_item,
-                assigns=assigns,
-                config=config,
-                make_tmp_dir=make_tmp_dir,
-                verbose=verbose,
-            )
+            run_exec_item(exec_item, assigns=assigns, config=config, make_tmp_dir=make_tmp_dir)

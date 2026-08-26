@@ -1,14 +1,16 @@
+import logging
 from pathlib import Path
 
 import pytest
 
 from amigarig.cli import main
 from amigarig.copyspec import CopyError
+from amigarig.log import logger
 
 CONFIGS_DIR = Path(__file__).resolve().parents[1] / "configs"
 
 
-def test_amigarig_error_prints_clean_message_not_traceback(monkeypatch, tmp_path, capsys):
+def test_amigarig_error_prints_clean_message_not_traceback(monkeypatch, tmp_path, log_messages):
     monkeypatch.chdir(tmp_path)
 
     def fake_run(*a, **k):
@@ -19,10 +21,10 @@ def test_amigarig_error_prints_clean_message_not_traceback(monkeypatch, tmp_path
     result = main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR)])
 
     assert result == 1
-    captured = capsys.readouterr()
-    assert "Traceback" not in captured.err
-    assert "amigarig: error:" in captured.err
-    assert "utils:fix3d" in captured.err
+    out = "\n".join(log_messages)
+    assert "Traceback" not in out
+    assert "error:" in out
+    assert "utils:fix3d" in out
 
 
 def test_non_amigarig_errors_still_raise(monkeypatch, tmp_path):
@@ -39,42 +41,27 @@ def test_non_amigarig_errors_still_raise(monkeypatch, tmp_path):
 
 def test_verbose_defaults_false_when_unset(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    seen = {}
+    monkeypatch.setattr("amigarig.cli.run", lambda *a, **k: 0)
 
-    def fake_run(*a, verbose, **k):
-        seen["verbose"] = verbose
-        return 0
-
-    monkeypatch.setattr("amigarig.cli.run", fake_run)
     main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR)])
 
-    assert seen["verbose"] is False
+    assert logger.getEffectiveLevel() == logging.INFO
 
 
 def test_verbose_flag_forces_true(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    seen = {}
+    monkeypatch.setattr("amigarig.cli.run", lambda *a, **k: 0)
 
-    def fake_run(*a, verbose, **k):
-        seen["verbose"] = verbose
-        return 0
-
-    monkeypatch.setattr("amigarig.cli.run", fake_run)
     main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR), "-v"])
 
-    assert seen["verbose"] is True
+    assert logger.getEffectiveLevel() == logging.DEBUG
 
 
 def test_verbose_true_from_project_local_config(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".amigarig.yaml").write_text("verbose: true\n")
-    seen = {}
+    monkeypatch.setattr("amigarig.cli.run", lambda *a, **k: 0)
 
-    def fake_run(*a, verbose, **k):
-        seen["verbose"] = verbose
-        return 0
-
-    monkeypatch.setattr("amigarig.cli.run", fake_run)
     main(["--config", "a500", "--configs-dir", str(CONFIGS_DIR)])
 
-    assert seen["verbose"] is True
+    assert logger.getEffectiveLevel() == logging.DEBUG

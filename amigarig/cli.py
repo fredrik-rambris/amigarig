@@ -9,7 +9,9 @@ import platformdirs
 import yaml
 
 from .config.build import Registries, assemble, env_overrides, _set_dotted
+from .config.registry import load_yaml_file
 from .errors import AmigarigError
+from .log import logger, set_verbose
 from .runner import run
 
 # Standard per-user config location (~/.config/amigarig on Linux, the
@@ -38,8 +40,7 @@ def parse_set_flags(pairs: list[str]) -> dict:
 def load_yaml_if_present(path: Path) -> dict:
     if not path.is_file():
         return {}
-    with path.open() as fh:
-        return yaml.safe_load(fh) or {}
+    return load_yaml_file(path)
 
 
 def load_project_local(cwd: Path) -> dict:
@@ -104,32 +105,38 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    configs_dir = Path(args.configs_dir).expanduser()
-    registries = Registries(configs_dir)
-    local_layer = load_yaml_if_present(configs_dir / LOCAL_CONFIG_FILENAME)
-    project_local = load_project_local(Path.cwd())
-    env_layer = env_overrides(os.environ)
-    cli_layer = parse_set_flags(args.overrides)
-
-    merged = assemble(
-        registries,
-        args.config,
-        local_layer=local_layer,
-        project_local=project_local,
-        env_layer=env_layer,
-        cli_overrides=cli_layer,
-    )
-
-    fsuae_binary = (
-        args.fsuae_binary or local_layer.get("fsuae_binary") or "/usr/bin/fs-uae"
-    )
-    fsuae_binary = str(Path(fsuae_binary).expanduser())
-    binary = relativize_binary(args.binary, Path.cwd()) if args.binary is not None else None
-    verbose = args.verbose if args.verbose is not None else bool(merged.get("verbose", False))
     try:
-        return run(merged, fsuae_binary, binary, args.args, verbose=verbose)
+        configs_dir = Path(args.configs_dir).expanduser()
+        registries = Registries(configs_dir)
+        local_layer = load_yaml_if_present(configs_dir / LOCAL_CONFIG_FILENAME)
+        project_local = load_project_local(Path.cwd())
+        env_layer = env_overrides(os.environ)
+        cli_layer = parse_set_flags(args.overrides)
+
+        merged = assemble(
+            registries,
+            args.config,
+            local_layer=local_layer,
+            project_local=project_local,
+            env_layer=env_layer,
+            cli_overrides=cli_layer,
+        )
+
+        fsuae_binary = (
+            args.fsuae_binary or local_layer.get("fsuae_binary") or "/usr/bin/fs-uae"
+        )
+        fsuae_binary = str(Path(fsuae_binary).expanduser())
+        binary = (
+            relativize_binary(args.binary, Path.cwd()) if args.binary is not None else None
+        )
+        verbose = (
+            args.verbose if args.verbose is not None else bool(merged.get("verbose", False))
+        )
+        set_verbose(verbose)
+
+        return run(merged, fsuae_binary, binary, args.args)
     except AmigarigError as e:
-        print(f"amigarig: error: {e}", file=sys.stderr)
+        logger.error(f"error: {e}")
         return 1
 
 

@@ -22,7 +22,6 @@ class RunContext:
     fsuae_binary: str
     binary: str
     args: list[str]
-    verbose: bool = False
 
 
 def get_backend(name: str):

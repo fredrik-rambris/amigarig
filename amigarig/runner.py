@@ -10,6 +10,7 @@ from .assigns import AssignTable
 from .backends import RunContext, get_backend
 from .disktargets import Target, make_target, run_copy
 from .execspec import run_exec_stage
+from .log import logger
 from .startup import write_startup_sequence
 
 
@@ -25,14 +26,7 @@ def _tmp_dir_factory(root: Path):
     return make
 
 
-def run(
-    merged_config: dict,
-    fsuae_binary: str,
-    binary: str | None,
-    args: list[str],
-    *,
-    verbose: bool = False,
-) -> int:
+def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[str]) -> int:
     """`binary=None` means "rig-only": build + keep the configured targets
     (ADFs / directories) and stop -- no startup-sequence, no backend
     (fs-uae/vamos) launched at all. `boot.run: false` (build a target but
@@ -53,12 +47,7 @@ def run(
         # very early -- before any target/copy work, so it can generate
         # inputs (key files, fetched assets, ...) that copy: later depends on
         run_exec_stage(
-            exec_spec,
-            "init",
-            assigns=assigns,
-            config=merged_config,
-            make_tmp_dir=make_tmp_dir,
-            verbose=verbose,
+            exec_spec, "init", assigns=assigns, config=merged_config, make_tmp_dir=make_tmp_dir
         )
 
         targets["boot"] = make_target("boot", boot_cfg, assigns, make_tmp_dir)
@@ -76,7 +65,7 @@ def run(
         copy_spec = merged_config.get("copy", {})
         copy_types = merged_config.get("copy_types", {})
         if copy_spec:
-            run_copy(copy_spec, copy_types, targets, assigns, verbose=verbose)
+            run_copy(copy_spec, copy_types, targets, assigns)
 
         # must run before finalize(): image writers (ADFVolumeWriter) close
         # the volume in finalize() and cannot be written to afterwards
@@ -95,23 +84,20 @@ def run(
                 target.writer.finalize()
 
         if binary is None:
-            print(f"Rigged boot target at {targets['boot'].path}")
+            logger.info(f"Rigged boot target at {targets['boot'].path}")
             if project_target is not None and project_target.writer is not None:
-                print(f"Rigged project target at {project_target.path}")
+                logger.info(f"Rigged project target at {project_target.path}")
             return 0
 
         should_run = boot_cfg.get("run", True)
         if not should_run:
-            print(f"Built boot target at {targets['boot'].path} (run: false, skipping backend)")
+            logger.info(
+                f"Built boot target at {targets['boot'].path} (run: false, skipping backend)"
+            )
             return 0
 
         run_exec_stage(
-            exec_spec,
-            "before",
-            assigns=assigns,
-            config=merged_config,
-            make_tmp_dir=make_tmp_dir,
-            verbose=verbose,
+            exec_spec, "before", assigns=assigns, config=merged_config, make_tmp_dir=make_tmp_dir
         )
 
         backend_name = merged_config.get("backend", "fs-uae")
@@ -124,17 +110,11 @@ def run(
             fsuae_binary=fsuae_binary,
             binary=binary,
             args=args,
-            verbose=verbose,
         )
         result = backend(ctx)
 
         run_exec_stage(
-            exec_spec,
-            "after",
-            assigns=assigns,
-            config=merged_config,
-            make_tmp_dir=make_tmp_dir,
-            verbose=verbose,
+            exec_spec, "after", assigns=assigns, config=merged_config, make_tmp_dir=make_tmp_dir
         )
         return result
     finally:
