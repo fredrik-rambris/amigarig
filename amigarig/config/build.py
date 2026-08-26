@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .merge import merge_chain
 from .registry import Registry
-from .resolve import resolve_chain
+from .resolve import flatten_chain, resolve_chain
 
 # env var name -> dotted merged-config key
 ENV_VAR_MAP = {
@@ -56,6 +56,13 @@ def env_overrides(env: dict) -> dict:
     return overrides
 
 
+_SELECTOR_KEYS = ("machine", "workbench", "boot")
+
+
+def _without_selector_keys(layer: dict) -> dict:
+    return {k: v for k, v in layer.items() if k not in _SELECTOR_KEYS}
+
+
 def assemble(
     registries: Registries,
     config_name: str,
@@ -65,39 +72,46 @@ def assemble(
     cli_overrides: dict | None = None,
 ) -> dict:
     if config_name in registries.run:
-        run_profile = resolve_chain(registries.run, config_name)
+        run_layers = flatten_chain(registries.run, config_name)
     else:
-        run_profile = {"machine": config_name}
+        run_layers = [{"machine": config_name}]
+    run_profile = merge_chain(run_layers)  # merged only to peek at machine/workbench/boot below
 
     # env/cli can redirect which machine/workbench/boot profile to use, so
     # peek at them before resolving those chains
     early = merge_chain([env_layer or {}, cli_overrides or {}])
 
     machine_name = early.get("machine", run_profile.get("machine"))
-    machine_cfg = resolve_chain(registries.profile, machine_name) if machine_name else {}
+    machine_layers = flatten_chain(registries.profile, machine_name) if machine_name else []
+    machine_cfg = merge_chain(machine_layers)  # merged only to peek at `workbench:` below
 
     workbench_name = early.get(
         "workbench", run_profile.get("workbench", machine_cfg.get("workbench"))
     )
-    workbench_cfg = (
-        resolve_chain(registries.workbench, workbench_name) if workbench_name else {}
+    workbench_layers = (
+        flatten_chain(registries.workbench, workbench_name) if workbench_name else []
     )
 
     boot_name = early.get("boot", run_profile.get("boot", "minimal"))
-    boot_profile_cfg = resolve_chain(registries.boot, boot_name) if boot_name in registries.boot else {}
+    boot_layers = (
+        flatten_chain(registries.boot, boot_name) if boot_name in registries.boot else []
+    )
 
-    run_own = {k: v for k, v in run_profile.items() if k not in ("machine", "workbench", "boot")}
-
+    # every category's raw, unmerged per-file layers are folded into one
+    # flat, whole-config merge below -- NOT pre-merged per category first
+    # (see resolve.py's flatten_chain docstring) -- so a "+key"/"^key" in
+    # any file can append against whatever an earlier layer in *any*
+    # category already contributed, not just its own extends chain.
     layers = [
         # machine-local facts (paths to your FS-UAE install, ROMs, Workbench
         # trees) come first -- lowest priority, so any profile can still
         # override an assign if it really needs to, but normally this is the
         # only place paths specific to *your* machine ever get written.
         local_layer or {},
-        machine_cfg,
-        workbench_cfg,
-        boot_profile_cfg,
-        run_own,
+        *machine_layers,
+        *workbench_layers,
+        *boot_layers,
+        *(_without_selector_keys(layer) for layer in run_layers),
         project_local or {},
         env_layer or {},
         cli_overrides or {},

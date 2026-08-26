@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .assigns import AssignTable
+from .errors import AmigarigError
 from .fsutil import CaseInsensitiveResolver
+
+
+class CopyError(AmigarigError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -80,12 +85,16 @@ def resolve_side(
     must_exist: bool,
 ) -> Path:
     if _is_qualified(value):
-        return resolve_ref(value, assigns, ci)
+        resolved = resolve_ref(value, assigns, ci)
+        if must_exist and not resolved.exists():
+            raise CopyError(f"source '{value}' does not exist (resolved to '{resolved}')")
+        return resolved
     root = resolve_ref(default_root, assigns, ci)
     if must_exist:
         resolved = ci.resolve(root, value)
         if resolved is not None:
             return resolved
+        raise CopyError(f"source '{value}' not found under '{default_root}' (looked in '{root}')")
     return root / value
 
 

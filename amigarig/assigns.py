@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .errors import AmigarigError
 
-class AssignError(ValueError):
+
+class AssignError(AmigarigError, ValueError):
     pass
 
 

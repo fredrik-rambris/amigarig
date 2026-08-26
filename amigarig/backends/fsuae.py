@@ -14,6 +14,9 @@ def run(ctx) -> int:
     fsuae_opts = resolve_fsuae_paths(ctx.merged_config.get("fsuae", {}), ctx.assigns)
     argv = build_argv(ctx.fsuae_binary, fsuae_opts, ctx.boot, ctx.project)
 
+    if ctx.verbose:
+        print(f"exec: {argv}")
+
     print(
         "Connect to port 1234 for logs"
         if "serial_port" in ctx.merged_config.get("fsuae", {})

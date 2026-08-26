@@ -206,7 +206,7 @@ amigarig --config=release bin/game
 `boot.run: false` builds the image (via `ADFVolumeWriter`) and stops
 before ever invoking a backend; `keep_as:` says where the finished `.adf`
 ends up instead of a deleted tmp file. `bin/game` is still needed here
-because the startup-sequence (`{binary} {args}`) is generated onto the
+because the startup-sequence (`{{ binary }} {{ args }}`) is generated onto the
 disk for someone booting it for real later.
 
 ### 6. Rig-only: just produce an artifact, run nothing

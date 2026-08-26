@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .assigns import AssignTable
-from .copyspec import normalize_copy_item, resolve_copy_item, _is_qualified
+from .copyspec import CopyError, normalize_copy_item, resolve_copy_item, _is_qualified
 from .fsutil import CaseInsensitiveResolver
 from .handlers import HandlerContext, run_handlers
 from .writers.hostdir import HostDirWriter
@@ -78,6 +78,8 @@ def run_copy(
     copy_types: dict,
     targets: dict[str, Target],
     assigns: AssignTable,
+    *,
+    verbose: bool = False,
 ) -> None:
     """copy_spec: {type_name: [raw_item, ...]}; copy_types: {type_name: {src, dest, handlers}}"""
     ci = CaseInsensitiveResolver()
@@ -100,8 +102,14 @@ def run_copy(
                     f"copy type '{type_name}' writes to unknown target '{target_name}:'"
                 )
 
-            resolved = resolve_copy_item(raw_item, type_src, type_dest, assigns, ci)
+            try:
+                resolved = resolve_copy_item(raw_item, type_src, type_dest, assigns, ci)
+            except CopyError as e:
+                raise CopyError(f"copy.{type_name}: {e} (item: {raw_item!r})") from None
+
             for expanded in run_handlers(resolved, handler_names, ctx):
+                if verbose:
+                    print(f"copy: {expanded.source} -> {expanded.dest}")
                 target.writer.write(expanded)
     # caller is responsible for calling target.writer.finalize() once all
     # writes (copy: entries + generated content like startup-sequence) are done

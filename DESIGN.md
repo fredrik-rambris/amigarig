@@ -104,6 +104,20 @@ built-in defaults
 Env vars are read directly from `os.environ` — loading `.env`/`.envrc`
 into the environment is direnv's job, not amigarig's.
 
+This whole stack is flattened into **one** `merge_chain()` call in
+`build.py`'s `assemble()` — each chain (machine, workbench, boot, run)
+contributes its *raw, unmerged* per-file layers (`resolve.py`'s
+`flatten_chain`), not a pre-merged single dict per chain. That matters
+for `+key`/`^key`: pre-merging a chain in isolation first (as a naive
+per-chain `resolve_chain()` would) resolves any `+key` with no local base
+into a plain replacement list right then, discarding the "append" intent
+before it ever reaches the other chains it was meant to stack onto — e.g.
+a boot profile's `+copy.c` silently *replacing* (instead of extending)
+a workbench profile's `copy.c`, since by the time they meet in an outer
+merge, the boot layer's key is no longer prefixed. Flattening first and
+merging once, in true final priority order, means `+`/`^` only ever gets
+resolved at the one point where the real accumulated base is known.
+
 ### Assigns
 
 Amiga-style logical assigns are a config section like any other
@@ -261,14 +275,15 @@ project:
 
 ## startup-sequence
 
-No templating engine — the existing layering/merge machinery already
-covers what would otherwise need conditionals. `boot.startup` is just
-another mergeable list, using the same `+key` append rule as `copy:`:
+The layering/merge machinery already covers what would otherwise need
+conditionals, so there's no separate "if" construct here. `boot.startup`
+is just another mergeable list, using the same `+key` append rule as
+`copy:`:
 
 ```yaml
 # configs/boot/minimal.yaml
 startup:
-  - text: ["cd Project:", "{binary} {args}"]
+  - text: ["cd Project:", "{{ binary }} {{ args }}"]
     priority: 90
 
 # configs/boot/debug.yaml
@@ -292,16 +307,26 @@ priorities, since the final sort is stable), the full list is
 stable-sorted by priority before rendering — this is what lets a layer
 insert lines in the *middle* of another layer's contributions, which
 `+startup` alone can't express since it only affects the very back of
-the whole merged list. The `"{binary} {args}"` launch sentinel
+the whole merged list. The `"{{ binary }} {{ args }}"` launch sentinel
 defaults to priority `90`, i.e. late but not last, leaving 90–100 free
 for lines that must run after it (e.g. capturing artifacts).
 
-**Rendering**: each line is passed through a plain `str.format(binary=...,
-args=...)` (or manual placeholder substitution) — safe here since these
-are trusted local config files, not user input. Assign-style tokens
-(`Project:`) are left as literal AmigaDOS syntax; they're resolved by
-AmigaOS at boot time, not by amigarig, so no assign-resolution step is
-needed for startup-sequence content itself.
+**Rendering**: each line is rendered through the same Jinja setup used
+for `exec:`'s `env:` values (`amigarig/templating.py`) — `{{ binary }}`
+and `{{ args }}` (already shell-quoted/joined, one string, same as the
+CLI's own argv) are the main placeholders; `argsarr` is the raw,
+un-joined argv list for a line that needs to process args individually,
+e.g. `{{ argsarr | map('amigaquote') | join(' ') }}`. `config` (the full
+merged config) and the `assign(...)` global are also available for the
+rare line that needs a config value or a real host path, and the
+`amigaquote` filter gives AmigaDOS-style CLI quoting (not shell quoting)
+for any value dropped into a line. Jinja's `{{ }}`/`{% %}` delimiters
+were chosen over the plain `str.format()` this used before because they
+almost never collide with real AmigaDOS script content, unlike bare
+`{`/`}`. Assign-style tokens (`Project:`) are left as literal AmigaDOS
+syntax by default; they're resolved by AmigaOS at boot time, not by
+amigarig — `assign(...)` is only for a line that needs the amigarig-side
+host path instead.
 
 **Disabling the generated file entirely**: `startup: []` produces an
 empty (or absent) generated `s/startup-sequence`. This is for cases
@@ -437,7 +462,7 @@ amigarig/
     __init__.py
     registry.py       # loads YAML files per directory into named registries
     merge.py          # the deep-merge + `+key` append algorithm (pure functions, no I/O)
-    resolve.py         # walks extends chains + cross-registry refs (workbench:, etc.) into one merged dict
+    resolve.py         # flattens an extends chain into its raw per-file layers (flatten_chain), or one merged dict for scalar peeks (resolve_chain)
   assigns.py           # assign table + resolve() resolver (cycle-guarded)
   fsutil.py            # ci_resolve() and friends (case-insensitive filesystem walk + cache)
   copyspec.py          # normalize_copy_item(), ResolvedCopyItem dataclass, item resolution against assigns/ci_resolve
@@ -494,6 +519,12 @@ amigarig --config=a1200-blizzard1230-31 [--set key=value ...] <binary> [args...]
   `AMIGA_FASTRAM`, ...) sit between the project-local config file and
   `--set`/CLI flags in priority, letting direnv/.env-based per-project
   defaults work without a CLion-specific config file.
+- `-v`/`--verbose` prints `copy:` files as they're written, `exec:`
+  commands as they run, and the backend launch command (fs-uae argv /
+  vamos args). Also settable as `verbose: true` anywhere in config
+  (`.amigarig.yaml`, `local.yaml`, a `run:`/`boot:` profile, ...); `-v`
+  on the CLI only ever forces it on, never off, so it can't silently
+  suppress a config-level `verbose: true`.
 
 Typical CLion "External Tool" invocation:
 ```

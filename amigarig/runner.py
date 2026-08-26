@@ -25,7 +25,14 @@ def _tmp_dir_factory(root: Path):
     return make
 
 
-def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[str]) -> int:
+def run(
+    merged_config: dict,
+    fsuae_binary: str,
+    binary: str | None,
+    args: list[str],
+    *,
+    verbose: bool = False,
+) -> int:
     """`binary=None` means "rig-only": build + keep the configured targets
     (ADFs / directories) and stop -- no startup-sequence, no backend
     (fs-uae/vamos) launched at all. `boot.run: false` (build a target but
@@ -46,7 +53,12 @@ def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[s
         # very early -- before any target/copy work, so it can generate
         # inputs (key files, fetched assets, ...) that copy: later depends on
         run_exec_stage(
-            exec_spec, "init", assigns=assigns, config=merged_config, make_tmp_dir=make_tmp_dir
+            exec_spec,
+            "init",
+            assigns=assigns,
+            config=merged_config,
+            make_tmp_dir=make_tmp_dir,
+            verbose=verbose,
         )
 
         targets["boot"] = make_target("boot", boot_cfg, assigns, make_tmp_dir)
@@ -64,13 +76,18 @@ def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[s
         copy_spec = merged_config.get("copy", {})
         copy_types = merged_config.get("copy_types", {})
         if copy_spec:
-            run_copy(copy_spec, copy_types, targets, assigns)
+            run_copy(copy_spec, copy_types, targets, assigns, verbose=verbose)
 
         # must run before finalize(): image writers (ADFVolumeWriter) close
         # the volume in finalize() and cannot be written to afterwards
         if binary is not None:
             write_startup_sequence(
-                targets["boot"], merged_config.get("startup", []), binary, args
+                targets["boot"],
+                merged_config.get("startup", []),
+                binary,
+                args,
+                config=merged_config,
+                assigns=assigns,
             )
 
         for target in targets.values():
@@ -89,7 +106,12 @@ def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[s
             return 0
 
         run_exec_stage(
-            exec_spec, "before", assigns=assigns, config=merged_config, make_tmp_dir=make_tmp_dir
+            exec_spec,
+            "before",
+            assigns=assigns,
+            config=merged_config,
+            make_tmp_dir=make_tmp_dir,
+            verbose=verbose,
         )
 
         backend_name = merged_config.get("backend", "fs-uae")
@@ -102,11 +124,17 @@ def run(merged_config: dict, fsuae_binary: str, binary: str | None, args: list[s
             fsuae_binary=fsuae_binary,
             binary=binary,
             args=args,
+            verbose=verbose,
         )
         result = backend(ctx)
 
         run_exec_stage(
-            exec_spec, "after", assigns=assigns, config=merged_config, make_tmp_dir=make_tmp_dir
+            exec_spec,
+            "after",
+            assigns=assigns,
+            config=merged_config,
+            make_tmp_dir=make_tmp_dir,
+            verbose=verbose,
         )
         return result
     finally:

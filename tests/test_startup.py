@@ -88,7 +88,7 @@ class FakeTarget:
 def test_write_startup_sequence_renders_priority_ordered_content(tmp_path):
     target = FakeTarget(tmp_path)
     items = [
-        {"text": "{binary} {args}", "priority": 90},
+        {"text": "{{ binary }} {{ args }}", "priority": 90},
         "cd Project:",
         {"text": "NoBorder"},
     ]
@@ -106,5 +106,32 @@ def test_write_startup_sequence_noop_when_empty(tmp_path):
 
 
 def test_render_startup_sequence_unchanged_shape():
-    content = render_startup_sequence(["cd Project:", "{binary} {args}"], "bin/game", ["a b"])
+    content = render_startup_sequence(["cd Project:", "{{ binary }} {{ args }}"], "bin/game", ["a b"])
     assert content == "cd Project:\nbin/game 'a b'\n"
+
+
+def test_render_startup_sequence_argsarr_is_raw_unjoined_list():
+    content = render_startup_sequence(
+        ["{{ argsarr | join(',') }}"], "bin/game", ["a b", "c"]
+    )
+    assert content == "a b,c\n"
+
+
+def test_render_startup_sequence_amigaquote_filter():
+    content = render_startup_sequence(
+        ['{{ argsarr | map("amigaquote") | join(" ") }}'], "bin/game", ['has space', 'has"quote']
+    )
+    assert content == '"has space" "has*"quote"\n'
+
+
+def test_render_startup_sequence_config_and_assign_available():
+    from amigarig.assigns import AssignTable
+
+    content = render_startup_sequence(
+        ["{{ config.fsuae.cpu }} {{ assign('wb:') }}"],
+        "bin/game",
+        [],
+        config={"fsuae": {"cpu": "68030"}},
+        assigns=AssignTable({"wb": "/opt/workbench"}),
+    )
+    assert content == "68030 /opt/workbench\n"

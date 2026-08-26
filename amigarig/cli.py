@@ -9,6 +9,7 @@ import platformdirs
 import yaml
 
 from .config.build import Registries, assemble, env_overrides, _set_dotted
+from .errors import AmigarigError
 from .runner import run
 
 # Standard per-user config location (~/.config/amigarig on Linux, the
@@ -83,6 +84,15 @@ def main(argv: list[str] | None = None) -> int:
         "--set", action="append", default=[], metavar="key=value", dest="overrides"
     )
     parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=None,
+        help="print copy: files, exec: commands, and the backend launch "
+        "command (fs-uae argv / vamos args) as they run; also settable as "
+        "verbose: true in config (this flag only ever forces it on)",
+    )
+    parser.add_argument(
         "binary",
         nargs="?",
         default=None,
@@ -115,7 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     fsuae_binary = str(Path(fsuae_binary).expanduser())
     binary = relativize_binary(args.binary, Path.cwd()) if args.binary is not None else None
-    return run(merged, fsuae_binary, binary, args.args)
+    verbose = args.verbose if args.verbose is not None else bool(merged.get("verbose", False))
+    try:
+        return run(merged, fsuae_binary, binary, args.args, verbose=verbose)
+    except AmigarigError as e:
+        print(f"amigarig: error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

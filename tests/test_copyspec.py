@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from amigarig.assigns import AssignTable
-from amigarig.copyspec import normalize_copy_item, resolve_copy_item
+from amigarig.copyspec import CopyError, normalize_copy_item, resolve_copy_item
 from amigarig.fsutil import CaseInsensitiveResolver
 
 
@@ -68,3 +70,27 @@ def test_resolve_item_with_independent_source_assign(tmp_path):
     )
     assert item.source == project / "build" / "libs" / "music.library"
     assert item.dest == boot / "libs" / "music.library"
+
+
+def test_resolve_missing_qualified_source_raises_clear_copy_error(tmp_path):
+    utils = tmp_path / "utils"
+    utils.mkdir()
+    boot = tmp_path / "boot"
+
+    assigns = AssignTable({"utils": str(utils), "boot": str(boot)})
+    ci = CaseInsensitiveResolver()
+
+    with pytest.raises(CopyError, match="fix3d"):
+        resolve_copy_item("utils:fix3d", "wb:c", "boot:c", assigns, ci)
+
+
+def test_resolve_missing_bare_source_raises_clear_copy_error(tmp_path):
+    wb = tmp_path / "wb31"
+    (wb / "c").mkdir(parents=True)
+    boot = tmp_path / "boot"
+
+    assigns = AssignTable({"wb": str(wb), "boot": str(boot)})
+    ci = CaseInsensitiveResolver()
+
+    with pytest.raises(CopyError, match="NoSuchCommand"):
+        resolve_copy_item("NoSuchCommand", "wb:c", "boot:c", assigns, ci)

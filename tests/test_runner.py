@@ -38,7 +38,7 @@ def test_backend_dispatch_uses_configured_backend_name(tmp_path, monkeypatch):
         "backend": "vamos",
         "boot": {"type": "harddrive", "keep_as": str(keep_dir)},
         "project": {"type": "harddrive"},
-        "startup": ["cd Project:", "{binary} {args}"],
+        "startup": ["cd Project:", "{{ binary }} {{ args }}"],
     }
 
     result = run(merged_config, "/usr/bin/fs-uae", "bin/game", [])
@@ -60,7 +60,7 @@ def test_exec_stages_run_init_then_before_then_after_around_backend(tmp_path, mo
     merged_config = {
         "boot": {"type": "harddrive", "keep_as": str(keep_dir)},
         "project": {"type": "harddrive"},
-        "startup": ["cd Project:", "{binary} {args}"],
+        "startup": ["cd Project:", "{{ binary }} {{ args }}"],
         "exec": [
             {"stage": "after", "cmd": f"echo after >> {log}"},
             {"stage": "before", "cmd": f"echo before >> {log}"},
