@@ -294,13 +294,16 @@ extends: minimal
 "Conditional" lines (e.g. only add `NoBorder` in debug mode) are just a
 question of which profile contributes the line — a profile that
 doesn't extend `debug` never sees it — the same reasoning already used
-for `copy:`.
+for `copy:`. `enabled:` (below) covers the other, config-*value*-driven
+case, where the condition isn't "which profile" but "what does the
+merged config say right now."
 
 **Item shape and priority**: each `startup:` item is either a bare
-string (one line, default priority) or a mapping `{text, priority}`
-where `text` is a string or a flat list of strings (a block of lines
-sharing one priority — no nesting, every element must be a plain
-string). Priority is a plain int, default `50`; convention is 1–100,
+string (one line, default priority, enabled) or a mapping `{text,
+priority, enabled}` where `text` is a string or a flat list of strings
+(a block of lines sharing one priority and one `enabled` — no nesting,
+every element must be a plain string). Priority is a plain int, default
+`50`; convention is 1–100,
 low = early, high = late. After all layers are merged (`+startup` still
 decides which layer's items participate, and breaks ties between equal
 priorities, since the final sort is stable), the full list is
@@ -310,6 +313,16 @@ insert lines in the *middle* of another layer's contributions, which
 the whole merged list. The `"{{ binary }} {{ args }}"` launch sentinel
 defaults to priority `90`, i.e. late but not last, leaving 90–100 free
 for lines that must run after it (e.g. capturing artifacts).
+
+**`enabled`** (default `true`): a bool, or a Jinja string rendered with
+the same `config`/`assign(...)` context as line content (see
+"Rendering" below) and coerced to a bool (`true`/`1`/`yes`/`on` →
+`True`, `false`/`0`/`no`/`off`/empty → `False`, anything else falls back
+to plain string truthiness), e.g. `enabled: "{{ config.fsuae.chipset ==
+'aga' }}"`. Evaluated *before* sorting — a disabled item's whole block
+(all its `text` lines) is dropped, same as if it had never been in the
+list. Note `enabled` sees `config`/`assign(...)` but not `binary`/`args`
+(those are only known at final render time, one step later).
 
 **Rendering**: each line is rendered through the same Jinja setup used
 for `exec:`'s `env:` values (`amigarig/templating.py`) — `{{ binary }}`

@@ -1,6 +1,7 @@
 import pytest
 
 from amigarig.startup import (
+    DEFAULT_ENABLED,
     DEFAULT_PRIORITY,
     normalize_startup_item,
     render_startup_sequence,
@@ -10,23 +11,51 @@ from amigarig.startup import (
 
 
 def test_normalize_bare_string_uses_default_priority():
-    assert normalize_startup_item("cd Project:") == (["cd Project:"], DEFAULT_PRIORITY)
+    assert normalize_startup_item("cd Project:") == (
+        ["cd Project:"],
+        DEFAULT_PRIORITY,
+        DEFAULT_ENABLED,
+    )
 
 
 def test_normalize_mapping_with_scalar_text():
-    assert normalize_startup_item({"text": "NoBorder", "priority": 10}) == (["NoBorder"], 10)
+    assert normalize_startup_item({"text": "NoBorder", "priority": 10}) == (
+        ["NoBorder"],
+        10,
+        DEFAULT_ENABLED,
+    )
 
 
 def test_normalize_mapping_missing_priority_defaults():
-    assert normalize_startup_item({"text": "NoBorder"}) == (["NoBorder"], DEFAULT_PRIORITY)
+    assert normalize_startup_item({"text": "NoBorder"}) == (
+        ["NoBorder"],
+        DEFAULT_PRIORITY,
+        DEFAULT_ENABLED,
+    )
 
 
 def test_normalize_mapping_with_block_text():
-    lines, priority = normalize_startup_item(
+    lines, priority, enabled = normalize_startup_item(
         {"text": ["Assign ENV: ENVARC:", "Assign T: RAM:T"], "priority": 20}
     )
     assert lines == ["Assign ENV: ENVARC:", "Assign T: RAM:T"]
     assert priority == 20
+    assert enabled is DEFAULT_ENABLED
+
+
+def test_normalize_mapping_with_explicit_enabled_bool():
+    _, _, enabled = normalize_startup_item({"text": "x", "enabled": False})
+    assert enabled is False
+
+
+def test_normalize_mapping_with_jinja_enabled_string():
+    _, _, enabled = normalize_startup_item({"text": "x", "enabled": "{{ config.foo }}"})
+    assert enabled == "{{ config.foo }}"
+
+
+def test_normalize_rejects_bad_enabled_type():
+    with pytest.raises(TypeError):
+        normalize_startup_item({"text": "x", "enabled": 1})
 
 
 def test_normalize_rejects_nested_non_string_in_block():
@@ -69,6 +98,43 @@ def test_resolve_expands_blocks_in_priority_order():
         {"text": "z", "priority": 90},
     ]
     assert resolve_startup_lines(items) == ["a", "b", "z"]
+
+
+def test_resolve_drops_bool_disabled_item():
+    items = ["cd Project:", {"text": "NoBorder", "enabled": False}, "Wait 2"]
+    assert resolve_startup_lines(items) == ["cd Project:", "Wait 2"]
+
+
+def test_resolve_bool_enabled_true_keeps_item():
+    items = [{"text": "NoBorder", "enabled": True}]
+    assert resolve_startup_lines(items) == ["NoBorder"]
+
+
+def test_resolve_jinja_enabled_true_keeps_item():
+    items = [{"text": "Fix3D", "enabled": "{{ config.fsuae.chipset == 'aga' }}"}]
+    assert resolve_startup_lines(items, config={"fsuae": {"chipset": "aga"}}) == ["Fix3D"]
+
+
+def test_resolve_jinja_enabled_false_drops_item():
+    items = [{"text": "Fix3D", "enabled": "{{ config.fsuae.chipset == 'aga' }}"}]
+    assert resolve_startup_lines(items, config={"fsuae": {"chipset": "ocs"}}) == []
+
+
+def test_resolve_jinja_enabled_drops_whole_block():
+    items = [{"text": ["a", "b"], "enabled": "false"}, "c"]
+    assert resolve_startup_lines(items) == ["c"]
+
+
+def test_resolve_jinja_enabled_uses_assign():
+    from amigarig.assigns import AssignTable
+
+    items = [{"text": "x", "enabled": "{{ assign('wb:') == '/opt/wb' }}"}]
+    assert resolve_startup_lines(items, assigns=AssignTable({"wb": "/opt/wb"})) == ["x"]
+    assert resolve_startup_lines(items, assigns=AssignTable({"wb": "/opt/other"})) == []
+
+
+def test_resolve_missing_enabled_defaults_to_included():
+    assert resolve_startup_lines(["plain"]) == ["plain"]
 
 
 class FakeWriter:
