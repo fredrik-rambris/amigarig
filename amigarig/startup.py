@@ -5,18 +5,22 @@ append rule as any other list-valued key). "Conditional" lines are just a
 question of which config layer contributes them.
 
 Each item is either a bare string (line = itself, priority =
-DEFAULT_PRIORITY, enabled) or a mapping `{text, priority, enabled}` where
-`text` is a string or flat list of strings (a block sharing one priority
-and one `enabled`) -- see `normalize_startup_item`. `+startup` still
-controls which layer's items make it into the merged list (and breaks
-ties, since the final sort is stable); the numeric priority then decides
-final line order, low to high, once every layer has contributed.
+DEFAULT_PRIORITY, enabled) or a mapping `{text, priority, enabled, name}`
+where `text` is a string or flat list of strings (a block sharing one
+priority and one `enabled`) -- see `normalize_startup_item`. `+startup`
+still controls which layer's items make it into the merged list (and
+breaks ties, since the final sort is stable); the numeric priority then
+decides final line order, low to high, once every layer has contributed.
 
 `enabled` (default `true`) is a bool, or a Jinja string rendered with the
 same `config`/`assign(...)` context as line content (see
 `resolve_startup_lines`) -- e.g. `enabled: "{{ config.fsuae.chipset ==
 'aga' }}"`. A disabled item's whole block is dropped before sorting/
 rendering, same as it never having been in the list at all.
+
+`name` (default: unset), if given, wraps the block in `;BEGIN <name>` /
+`;END <name>` AmigaDOS comment lines -- purely cosmetic, for reading a
+generated startup-sequence; has no effect on priority/enabled/rendering.
 
 Rendering goes through the same Jinja setup as `exec:`'s `env:` values
 (see templating.py): `{{ binary }}`/`{{ args }}` for the launch line
@@ -41,13 +45,16 @@ DEFAULT_ENABLED = True
 
 
 def normalize_startup_item(raw) -> tuple[list[str], int, bool | str]:
-    """Bare string or {text, priority, enabled} mapping -> (lines, priority,
-    enabled). `enabled` is returned unevaluated (bool or Jinja string) --
-    see `_evaluate_enabled`.
+    """Bare string or {text, priority, enabled, name} mapping -> (lines,
+    priority, enabled). `enabled` is returned unevaluated (bool or Jinja
+    string) -- see `_evaluate_enabled`.
 
     `text` may be a single string or a flat list of strings (a block of
     lines sharing one priority) -- no nesting: every element must itself
-    be a plain string.
+    be a plain string. `name` (default: unset), if given, wraps the block
+    in `;BEGIN <name>` / `;END <name>` AmigaDOS comment lines -- purely
+    cosmetic (for reading a generated startup-sequence), no effect on
+    priority/enabled/rendering.
     """
     if isinstance(raw, str):
         return [raw], DEFAULT_PRIORITY, DEFAULT_ENABLED
@@ -55,18 +62,25 @@ def normalize_startup_item(raw) -> tuple[list[str], int, bool | str]:
         text = raw["text"]
         priority = raw.get("priority", DEFAULT_PRIORITY)
         enabled = raw.get("enabled", DEFAULT_ENABLED)
+        name = raw.get("name")
         if not isinstance(enabled, (bool, str)):
             raise TypeError(f"startup 'enabled' must be a bool or string, got {enabled!r}")
+        if name is not None and not isinstance(name, str):
+            raise TypeError(f"startup 'name' must be a string, got {name!r}")
         if isinstance(text, str):
-            return [text], priority, enabled
-        if isinstance(text, list):
+            lines = [text]
+        elif isinstance(text, list):
             for line in text:
                 if not isinstance(line, str):
                     raise TypeError(
                         f"startup 'text' list items must be strings, got {line!r}"
                     )
-            return list(text), priority, enabled
-        raise TypeError(f"startup 'text' must be a string or list of strings, got {text!r}")
+            lines = list(text)
+        else:
+            raise TypeError(f"startup 'text' must be a string or list of strings, got {text!r}")
+        if name:
+            lines = [f";BEGIN {name}", *lines, f";END {name}"]
+        return lines, priority, enabled
     raise TypeError(f"startup item must be a string or mapping, got {raw!r}")
 
 

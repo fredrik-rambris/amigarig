@@ -58,6 +58,26 @@ def test_normalize_rejects_bad_enabled_type():
         normalize_startup_item({"text": "x", "enabled": 1})
 
 
+def test_normalize_unnamed_block_has_no_markers():
+    lines, _, _ = normalize_startup_item({"text": "fix3d"})
+    assert lines == ["fix3d"]
+
+
+def test_normalize_named_block_gets_begin_end_markers():
+    lines, _, _ = normalize_startup_item({"text": "fix3d", "name": "AGA"})
+    assert lines == [";BEGIN AGA", "fix3d", ";END AGA"]
+
+
+def test_normalize_named_block_wraps_whole_multiline_text():
+    lines, _, _ = normalize_startup_item({"text": ["a", "b"], "name": "AGA"})
+    assert lines == [";BEGIN AGA", "a", "b", ";END AGA"]
+
+
+def test_normalize_rejects_bad_name_type():
+    with pytest.raises(TypeError):
+        normalize_startup_item({"text": "x", "name": 42})
+
+
 def test_normalize_rejects_nested_non_string_in_block():
     with pytest.raises(TypeError):
         normalize_startup_item({"text": ["ok", ["nested", "list"]]})
@@ -135,6 +155,15 @@ def test_resolve_jinja_enabled_uses_assign():
 
 def test_resolve_missing_enabled_defaults_to_included():
     assert resolve_startup_lines(["plain"]) == ["plain"]
+
+
+def test_resolve_named_block_markers_travel_with_priority_and_enabled():
+    items = [
+        {"text": "z", "priority": 90},
+        {"text": "fix3d", "name": "AGA", "priority": 10},
+        {"text": "skipped", "name": "SKIPPED", "priority": 5, "enabled": False},
+    ]
+    assert resolve_startup_lines(items) == [";BEGIN AGA", "fix3d", ";END AGA", "z"]
 
 
 class FakeWriter:

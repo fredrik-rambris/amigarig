@@ -300,9 +300,9 @@ merged config say right now."
 
 **Item shape and priority**: each `startup:` item is either a bare
 string (one line, default priority, enabled) or a mapping `{text,
-priority, enabled}` where `text` is a string or a flat list of strings
-(a block of lines sharing one priority and one `enabled` — no nesting,
-every element must be a plain string). Priority is a plain int, default
+priority, enabled, name}` where `text` is a string or a flat list of
+strings (a block of lines sharing one priority and one `enabled` — no
+nesting, every element must be a plain string). Priority is a plain int, default
 `50`; convention is 1–100,
 low = early, high = late. After all layers are merged (`+startup` still
 decides which layer's items participate, and breaks ties between equal
@@ -323,6 +323,17 @@ to plain string truthiness), e.g. `enabled: "{{ config.fsuae.chipset ==
 (all its `text` lines) is dropped, same as if it had never been in the
 list. Note `enabled` sees `config`/`assign(...)` but not `binary`/`args`
 (those are only known at final render time, one step later).
+
+**`name`** (default: unset): wraps the block in `;BEGIN <name>` /
+`;END <name>` AmigaDOS comment lines, purely for reading a generated
+startup-sequence — no effect on priority/enabled/rendering, and travels
+with the block through both. E.g. `{text: "fix3d", name: "AGA", priority:
+10}` renders as:
+```
+;BEGIN AGA
+fix3d
+;END AGA
+```
 
 **Rendering**: each line is rendered through the same Jinja setup used
 for `exec:`'s `env:` values (`amigarig/templating.py`) — `{{ binary }}`
