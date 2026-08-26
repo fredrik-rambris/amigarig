@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 
 from ..errors import AmigarigError
+from ..log import logger
 
 
 class ConfigNotFoundError(AmigarigError, KeyError):
@@ -21,6 +22,7 @@ def load_yaml_file(path: Path) -> dict:
     """Load one YAML file into a dict, raising `ConfigLoadError` (with the
     file path) on a parse error or a non-mapping top level, instead of a
     bare yaml.YAMLError traceback. A missing/empty file is `{}`."""
+    logger.debug(f"read yaml: {path}")
     try:
         with path.open() as fh:
             data = yaml.safe_load(fh)

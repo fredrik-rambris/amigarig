@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..log import logger
 from .merge import merge_chain
 from .registry import Registry
 from .resolve import flatten_chain, resolve_chain
@@ -63,6 +64,22 @@ def _without_selector_keys(layer: dict) -> dict:
     return {k: v for k, v in layer.items() if k not in _SELECTOR_KEYS}
 
 
+def _key_paths(d: dict, prefix: str = "") -> list[str]:
+    """Dotted key paths a layer touches, one level into nested dicts (e.g.
+    "copy.+c", "fsuae.cpu") -- not a full recursive walk (list values, the
+    common case for copy:/startup:/exec: content, are left as one path,
+    not exploded per-item). Keeps `+`/`^` prefixes as written, since
+    that's exactly the detail that explains append vs. replace."""
+    paths = []
+    for key, value in d.items():
+        path = f"{prefix}{key}"
+        if isinstance(value, dict):
+            paths.extend(_key_paths(value, prefix=f"{path}."))
+        else:
+            paths.append(path)
+    return paths
+
+
 def assemble(
     registries: Registries,
     config_name: str,
@@ -74,8 +91,9 @@ def assemble(
     if config_name in registries.run:
         run_layers = flatten_chain(registries.run, config_name)
     else:
-        run_layers = [{"machine": config_name}]
-    run_profile = merge_chain(run_layers)  # merged only to peek at machine/workbench/boot below
+        run_layers = [(config_name, {"machine": config_name})]
+    # merged only to peek at machine/workbench/boot below
+    run_profile = merge_chain([layer for _, layer in run_layers])
 
     # env/cli can redirect which machine/workbench/boot profile to use, so
     # peek at them before resolving those chains
@@ -83,7 +101,8 @@ def assemble(
 
     machine_name = early.get("machine", run_profile.get("machine"))
     machine_layers = flatten_chain(registries.profile, machine_name) if machine_name else []
-    machine_cfg = merge_chain(machine_layers)  # merged only to peek at `workbench:` below
+    # merged only to peek at `workbench:` below
+    machine_cfg = merge_chain([layer for _, layer in machine_layers])
 
     workbench_name = early.get(
         "workbench", run_profile.get("workbench", machine_cfg.get("workbench"))
@@ -97,23 +116,39 @@ def assemble(
         flatten_chain(registries.boot, boot_name) if boot_name in registries.boot else []
     )
 
+    logger.debug(
+        f"config: run={config_name!r} machine={machine_name!r} "
+        f"workbench={workbench_name!r} boot={boot_name!r} "
+        f"({len(machine_layers)} machine + {len(workbench_layers)} workbench + "
+        f"{len(boot_layers)} boot + {len(run_layers)} run layer(s) to merge)"
+    )
+
     # every category's raw, unmerged per-file layers are folded into one
     # flat, whole-config merge below -- NOT pre-merged per category first
     # (see resolve.py's flatten_chain docstring) -- so a "+key"/"^key" in
     # any file can append against whatever an earlier layer in *any*
-    # category already contributed, not just its own extends chain.
-    layers = [
+    # category already contributed, not just its own extends chain. Each
+    # entry keeps a label identifying where it came from, purely for the
+    # debug log below -- this is the actual final merge order, so it's
+    # what explains e.g. "why did boot/minimal.yaml's +c win out here."
+    labeled_layers: list[tuple[str, dict]] = [
         # machine-local facts (paths to your FS-UAE install, ROMs, Workbench
         # trees) come first -- lowest priority, so any profile can still
         # override an assign if it really needs to, but normally this is the
         # only place paths specific to *your* machine ever get written.
-        local_layer or {},
-        *machine_layers,
-        *workbench_layers,
-        *boot_layers,
-        *(_without_selector_keys(layer) for layer in run_layers),
-        project_local or {},
-        env_layer or {},
-        cli_overrides or {},
+        ("local.yaml", local_layer or {}),
+        *((f"machine/{name}.yaml", layer) for name, layer in machine_layers),
+        *((f"workbench/{name}.yaml", layer) for name, layer in workbench_layers),
+        *((f"boot/{name}.yaml", layer) for name, layer in boot_layers),
+        *((f"run/{name}.yaml", _without_selector_keys(layer)) for name, layer in run_layers),
+        (".amigarig.yaml", project_local or {}),
+        ("environment variables", env_layer or {}),
+        ("--set / CLI overrides", cli_overrides or {}),
     ]
-    return merge_chain(layers)
+
+    for label, layer in labeled_layers:
+        keys = sorted(_key_paths(layer))
+        if keys:
+            logger.debug(f"merge layer [{label}]: {keys}")
+
+    return merge_chain([layer for _, layer in labeled_layers])

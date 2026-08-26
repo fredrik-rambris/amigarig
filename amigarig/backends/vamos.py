@@ -74,6 +74,6 @@ def run(ctx) -> int:
     # as vamos CLI args instead of via cfg_dict.
     vamos_args = [f"project:{ctx.binary}", *ctx.args]
 
-    logger.debug(f"exec (vamos): args={vamos_args} cfg={cfg_dict}")
+    logger.info(f"exec (vamos): args={vamos_args} cfg={cfg_dict}")
 
     return vamos_main(cfg_dict=cfg_dict, args=vamos_args)

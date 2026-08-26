@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-from amigarig.log import logger, set_verbose
+from amigarig.log import logger, set_verbosity
 
 
 class _ListHandler(logging.Handler):
@@ -21,7 +21,7 @@ def log_messages():
     messages, independent of its StreamHandler's stream (which capsys
     can't see -- it caches sys.stderr at handler-construction time) and
     of caplog's level-forcing (which would defeat testing "not verbose
-    logs nothing"). Resets verbosity to non-verbose on teardown."""
+    logs nothing"). Resets verbosity to 0 (WARNING) on teardown."""
     handler = _ListHandler()
     handler.setLevel(logging.DEBUG)
     logger.addHandler(handler)
@@ -29,4 +29,4 @@ def log_messages():
         yield handler.messages
     finally:
         logger.removeHandler(handler)
-        set_verbose(False)
+        set_verbosity(0)

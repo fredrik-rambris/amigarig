@@ -1,6 +1,6 @@
 from amigarig.assigns import AssignTable
 from amigarig.disktargets import Target, run_copy
-from amigarig.log import set_verbose
+from amigarig.log import set_verbosity
 from amigarig.writers.hostdir import HostDirWriter
 
 
@@ -18,7 +18,7 @@ def test_run_copy_verbose_prints_source_and_dest(tmp_path, log_messages):
     targets = {"boot": _make_boot_target(tmp_path)}
     copy_types = {"c": {"src": "wb:c", "dest": "boot:c"}}
 
-    set_verbose(True)
+    set_verbosity(1)
     run_copy({"c": ["Copy"]}, copy_types, targets, assigns)
 
     out = "\n".join(log_messages)
@@ -35,7 +35,7 @@ def test_run_copy_not_verbose_prints_nothing(tmp_path, log_messages):
     targets = {"boot": _make_boot_target(tmp_path)}
     copy_types = {"c": {"src": "wb:c", "dest": "boot:c"}}
 
-    set_verbose(False)
+    set_verbosity(0)
     run_copy({"c": ["Copy"]}, copy_types, targets, assigns)
 
     assert log_messages == []

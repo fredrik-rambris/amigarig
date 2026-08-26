@@ -15,6 +15,6 @@ def run(ctx) -> int:
     fsuae_opts = resolve_fsuae_paths(ctx.merged_config.get("fsuae", {}), ctx.assigns)
     argv = build_argv(ctx.fsuae_binary, fsuae_opts, ctx.boot, ctx.project)
 
-    logger.debug(f"exec: {argv}")
+    logger.info(f"exec: {argv}")
 
     return os.spawnvp(os.P_WAIT, ctx.fsuae_binary, argv)

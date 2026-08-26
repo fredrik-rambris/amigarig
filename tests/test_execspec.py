@@ -9,7 +9,7 @@ from amigarig.execspec import (
     run_exec_item,
     run_exec_stage,
 )
-from amigarig.log import set_verbose
+from amigarig.log import set_verbosity
 
 
 def _tmp_dir_factory(tmp_path):
@@ -205,7 +205,7 @@ def test_run_exec_item_verbose_prints_argv_and_cwd(tmp_path, log_messages):
     assigns = AssignTable()
     item = normalize_exec_item({"cmd": ["true"]})
 
-    set_verbose(True)
+    set_verbosity(1)
     run_exec_item(item, assigns=assigns, config={}, make_tmp_dir=_tmp_dir_factory(tmp_path))
 
     out = "\n".join(log_messages)
@@ -217,7 +217,7 @@ def test_run_exec_item_not_verbose_prints_nothing(tmp_path, log_messages):
     assigns = AssignTable()
     item = normalize_exec_item({"cmd": ["true"]})
 
-    set_verbose(False)
+    set_verbosity(0)
     run_exec_item(item, assigns=assigns, config={}, make_tmp_dir=_tmp_dir_factory(tmp_path))
 
     assert log_messages == []

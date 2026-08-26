@@ -114,7 +114,7 @@ def run_exec_item(
         redirect += f" < {input_path}"
     if output_path is not None:
         redirect += f" > {output_path}"
-    logger.debug(f"exec ({item['stage']}): {argv} (cwd={cwd}){redirect}")
+    logger.info(f"exec ({item['stage']}): {argv} (cwd={cwd}){redirect}")
 
     stdin = open(input_path, "rb") if input_path else None
     stdout = open(output_path, "wb") if output_path else None

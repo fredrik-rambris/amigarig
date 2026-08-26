@@ -85,6 +85,49 @@ This one algorithm (implemented once, used for every registry: machine,
 kickstart, workbench, boot, run, and project-local overrides) is the
 entire "object orientation" of the system.
 
+### When do you need `+key`?
+
+The rule is about the **value's type** at that key, not the key's name
+or which config block it's in:
+
+- Key holds a **dict** (`assigns:`, `copy:` itself, `copy_types:`,
+  `fsuae:`, `vamos:`, ...) → merges automatically, per sub-key, on every
+  layer. Setting a new sub-key in a later layer just adds it alongside
+  what's already there; there's no way to accidentally wipe out sibling
+  sub-keys, and no `+` is needed or meaningful here.
+- Key holds a **list** (`copy.c`, `copy.fonts`, `startup:`, `exec:`, a
+  list-valued `fsuae:`/`vamos:` option, ...) → a later layer setting the
+  *same* key **replaces the whole list**. Use `+key` to append instead.
+- Key holds a **scalar** (`fsuae.cpu`, `boot.type`, `workbench:`, an
+  individual `assigns.wb`, ...) → a later layer setting it always
+  replaces. `+` doesn't apply to scalars (`merge.py` raises `TypeError`
+  if you try — both sides have to be lists).
+
+Since `copy:`/`copy_types:` are dicts *of* lists, both rules apply at
+once, one level apart — this is the case that trips people up:
+
+```yaml
+# workbench/wb31.yaml
+copy:
+  c: [Assign, Copy, Delete]     # copy is a dict -> this just sets its "c" sub-key
+
+# boot/minimal.yaml
+copy:
+  c: [UAEQuit]                  # copy.c is a list -> REPLACES wb31's list entirely,
+                                 # final copy.c == [UAEQuit], wb31's 3 entries are gone
+
+  +c: [UAEQuit]                 # with "+": APPENDS instead,
+                                 # final copy.c == [Assign, Copy, Delete, UAEQuit]
+```
+
+adding a *new* copy type (e.g. `fonts:` where nothing set it before) never
+needs `+`, because that's the dict-merge case — it's only extending an
+*existing* list-valued key (almost always `copy.<type>`, `startup:`, or
+`exec:`) that does. When in doubt, `-vv` logs exactly which key each
+layer sets, `+` and all (see "Error handling and logging" below) — if a
+list you expected to accumulate shows up as a *bare* key (`copy.c`, not
+`copy.+c`) in a layer that's supposed to be adding to it, that's the bug.
+
 ### Merge priority (full stack, low to high)
 
 ```
@@ -547,12 +590,13 @@ amigarig --config=a1200-blizzard1230-31 [--set key=value ...] <binary> [args...]
   `AMIGA_FASTRAM`, ...) sit between the project-local config file and
   `--set`/CLI flags in priority, letting direnv/.env-based per-project
   defaults work without a CLion-specific config file.
-- `-v`/`--verbose` prints `copy:` files as they're written, `exec:`
-  commands as they run, and the backend launch command (fs-uae argv /
-  vamos args). Also settable as `verbose: true` anywhere in config
-  (`.amigarig.yaml`, `local.yaml`, a `run:`/`boot:` profile, ...); `-v`
-  on the CLI only ever forces it on, never off, so it can't silently
-  suppress a config-level `verbose: true`.
+- `-v`/`--verbose` is repeatable (0/1/2) and raises the log level from
+  the default WARNING — `-v` to INFO (`copy:`/`exec:`/backend launch
+  line), `-vv` to DEBUG (config loading/merging trace). Also settable as
+  `verbose:` anywhere in config (int, or bool as 0/1 shorthand); combines
+  with the CLI flag as `max()`, so `-v` only ever raises verbosity, never
+  suppresses a config-level `verbose: 2`. See "Error handling and
+  logging" below.
 
 Typical CLion "External Tool" invocation:
 ```
@@ -577,18 +621,46 @@ and all.
 **Logging** (`log.py`): a single `logging.getLogger("amigarig")`,
 formatted as `"[amigarig] %(message)s"` — no timestamps/level names, just
 enough to pick amigarig's own lines out of fs-uae/vamos/subprocess noise
-sharing the same terminal. INFO is the default (rigged-target summaries,
-`AmigarigError` messages); DEBUG is what `-v`/`--verbose`/`verbose: true`
-unlocks (`set_verbose()`, called once in `cli.py` after the merged config
-is known) — every `copy:` file written, every `exec:` command run, the
-backend launch line. Everything goes to stderr. No `verbose:` parameter
-is threaded through `run_copy`/`run_exec_stage`/`RunContext`/etc. any
-more — call sites just log at DEBUG unconditionally and the logger's
-level decides whether that's seen, which is also why tests assert on
-logger output (a handler attached directly to `amigarig.log.logger`) 
-rather than `capsys`: `logging.StreamHandler()` binds `sys.stderr` at
-construction time, so `capsys`'s later swap of `sys.stderr` isn't visible
-to it.
+sharing the same terminal. Everything goes to stderr. Verbosity is a 0/1/2
+count (`set_verbosity(count)`), driven by `-v` (repeatable, `action:
+"count"`) and/or a `verbose:` config key (int, or bool as 0/1 shorthand)
+— the CLI flag and the config value combine as `max()`, so `-v` only
+ever raises verbosity, never suppresses a config-level `verbose: 2`:
+
+- **0 (default) → WARNING**: quiet — just warnings (e.g. vamos skipping
+  an image-target assign) and `AmigarigError` messages.
+- **1 (`-v`) → INFO**: adds every `copy:` file written, every `exec:`
+  command run (with its argv/cwd/redirects), the backend launch line
+  (fs-uae argv / vamos args), and rigged/built-target summaries.
+- **2 (`-vv`) → DEBUG**: adds config loading/merging trace — every YAML
+  file read (`config/registry.py`'s `load_yaml_file`), which machine/
+  workbench/boot/run profiles were selected, and, in true final merge
+  order, which dotted keys each contributing file sets (`config/build.py`'s
+  `assemble()`, via `resolve.py`'s `flatten_chain` — which now carries
+  each layer's source config name specifically so this can be logged;
+  see its docstring) — e.g. `merge layer [workbench/wb31.yaml]:
+  ['copy.+c', ...]` immediately followed by `merge layer
+  [boot/minimal.yaml]: ['copy.+c', ...]` makes it obvious both files are
+  appending to `copy.c`, in that order — exactly the detail needed to
+  explain a "part of my copy list went missing" case (a layer with only
+  `machine`/`workbench`/`boot` selector keys, nothing left after
+  stripping, is skipped rather than logged empty).
+
+`set_verbosity` is called once in `cli.py` right after arg parsing
+(CLI-only, so `-vv` can trace the config loading about to happen) and
+again once the merged config's own `verbose:` is known (`max()`'d with
+the CLI count) — config-level verbosity can't retroactively reveal
+config-loading trace that already happened before it was known, only
+the CLI flag can do that.
+
+No `verbose:` parameter is threaded through `run_copy`/`run_exec_stage`/
+`RunContext`/etc. — call sites just log at their fixed level
+unconditionally and the logger's level decides whether that's seen,
+which is also why tests assert on logger output (a handler attached
+directly to `amigarig.log.logger`, via the `log_messages` fixture in
+`tests/conftest.py`) rather than `capsys`: `logging.StreamHandler()`
+binds `sys.stderr` at construction time, so `capsys`'s later swap of
+`sys.stderr` isn't visible to it.
 
 ## Configs dir location
 

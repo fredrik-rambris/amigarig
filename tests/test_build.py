@@ -1,4 +1,5 @@
 from amigarig.config.build import Registries, assemble
+from amigarig.log import set_verbosity
 
 
 def _write(directory, name, content):
@@ -63,3 +64,27 @@ def test_run_profile_extends_chain_also_flattened(tmp_path):
     merged = assemble(registries, "dev")
 
     assert merged["copy"]["c"] == ["FromBaseRun", "FromDev"]
+
+
+def test_debug_logs_which_file_contributed_which_keys_in_merge_order(tmp_path, log_messages):
+    """The whole point of flattening chains instead of pre-merging them:
+    provenance survives per-file, so a -vv trace can show e.g. both
+    workbench/wb.yaml and boot/minimal.yaml appending to copy.+c, which
+    is exactly what explains a "some of my copy list went missing" case."""
+    _write(tmp_path / "machine", "m", "{}\n")
+    _write(tmp_path / "kickstart", "unused", "{}\n")
+    _write(tmp_path / "workbench", "wb", "copy:\n  c: [Assign]\n")
+    _write(tmp_path / "boot", "minimal", "copy:\n  +c: [utils:UAEQuit]\n")
+    _write(tmp_path / "run", "dev", "machine: m\nworkbench: wb\n")
+
+    registries = Registries(tmp_path)
+    set_verbosity(2)
+    assemble(registries, "dev")
+
+    out = "\n".join(log_messages)
+    assert "[workbench/wb.yaml]" in out and "copy.c" in out
+    assert "[boot/minimal.yaml]" in out and "copy.+c" in out
+    # a layer with nothing but selector keys (machine/workbench/boot),
+    # empty after stripping, is silently skipped rather than logged empty
+    assert "[machine/m.yaml]" not in out
+    assert "[run/dev.yaml]" not in out

@@ -11,7 +11,7 @@ import yaml
 from .config.build import Registries, assemble, env_overrides, _set_dotted
 from .config.registry import load_yaml_file
 from .errors import AmigarigError
-from .log import logger, set_verbose
+from .log import logger, set_verbosity
 from .runner import run
 
 # Standard per-user config location (~/.config/amigarig on Linux, the
@@ -87,11 +87,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-v",
         "--verbose",
-        action="store_true",
-        default=None,
-        help="print copy: files, exec: commands, and the backend launch "
-        "command (fs-uae argv / vamos args) as they run; also settable as "
-        "verbose: true in config (this flag only ever forces it on)",
+        action="count",
+        default=0,
+        help="repeatable. -v: also print copy: files, exec: commands, the "
+        "backend launch command, and rigged/built-target summaries. -vv: "
+        "also trace config loading/merging (which YAML files were read, "
+        "which machine/workbench/boot/run profiles were selected). Also "
+        "settable as verbose: <0|1|2> (or a bool, as shorthand for 0/1) in "
+        "config -- the higher of the two wins, this flag only ever raises it",
     )
     parser.add_argument(
         "binary",
@@ -104,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
+    # CLI-only for now, so -vv can trace the config loading/merging that's
+    # about to happen below; re-applied below once verbose: from config is
+    # also known, in case config asks for more than the CLI did.
+    set_verbosity(args.verbose)
 
     try:
         configs_dir = Path(args.configs_dir).expanduser()
@@ -129,10 +136,10 @@ def main(argv: list[str] | None = None) -> int:
         binary = (
             relativize_binary(args.binary, Path.cwd()) if args.binary is not None else None
         )
-        verbose = (
-            args.verbose if args.verbose is not None else bool(merged.get("verbose", False))
-        )
-        set_verbose(verbose)
+        config_verbosity = merged.get("verbose", 0)
+        if isinstance(config_verbosity, bool):
+            config_verbosity = 1 if config_verbosity else 0
+        set_verbosity(max(args.verbose, int(config_verbosity)))
 
         return run(merged, fsuae_binary, binary, args.args)
     except AmigarigError as e:

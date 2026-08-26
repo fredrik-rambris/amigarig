@@ -107,7 +107,7 @@ def run_copy(
                 raise CopyError(f"copy.{type_name}: {e} (item: {raw_item!r})") from None
 
             for expanded in run_handlers(resolved, handler_names, ctx):
-                logger.debug(f"copy: {expanded.source} -> {expanded.dest}")
+                logger.info(f"copy: {expanded.source} -> {expanded.dest}")
                 target.writer.write(expanded)
     # caller is responsible for calling target.writer.finalize() once all
     # writes (copy: entries + generated content like startup-sequence) are done
