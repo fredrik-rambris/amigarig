@@ -6,9 +6,6 @@ Rules:
   - "+key" in the higher layer -> append/extend the base's "key" list instead
     of replacing it (marker is stripped before comparison, dedup is left to
     the caller since identity depends on later resolution, not raw values)
-  - "^key" in the higher layer -> prepend the override's list before the
-    base's "key" list instead of replacing it (same stripping/dedup rules
-    as "+key", just the other end)
   - scalar + scalar         -> replace
 """
 from __future__ import annotations
@@ -16,7 +13,6 @@ from __future__ import annotations
 from typing import Any
 
 APPEND_PREFIX = "+"
-PREPEND_PREFIX = "^"
 
 
 def merge(base: Any, override: Any) -> Any:
@@ -41,20 +37,6 @@ def _merge_dicts(base: dict, override: dict) -> dict:
             else:
                 raise TypeError(
                     f"cannot append to key '{key}': base is {type(existing).__name__}, "
-                    f"override is {type(value).__name__} (both must be lists)"
-                )
-            continue
-
-        if isinstance(raw_key, str) and raw_key.startswith(PREPEND_PREFIX):
-            key = raw_key[len(PREPEND_PREFIX):]
-            existing = result.get(key)
-            if existing is None:
-                result[key] = list(value) if isinstance(value, list) else value
-            elif isinstance(existing, list) and isinstance(value, list):
-                result[key] = value + existing
-            else:
-                raise TypeError(
-                    f"cannot prepend to key '{key}': base is {type(existing).__name__}, "
                     f"override is {type(value).__name__} (both must be lists)"
                 )
             continue

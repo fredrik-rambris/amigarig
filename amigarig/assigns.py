@@ -15,6 +15,9 @@ class AssignTable:
     def set(self, name: str, target: str) -> None:
         self._assigns[name] = target
 
+    def names(self) -> list[str]:
+        return list(self._assigns)
+
     def resolve(self, path: str) -> Path:
         return self._resolve(path, visited=())
 

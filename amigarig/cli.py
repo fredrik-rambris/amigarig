@@ -82,7 +82,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--set", action="append", default=[], metavar="key=value", dest="overrides"
     )
-    parser.add_argument("binary")
+    parser.add_argument(
+        "binary",
+        nargs="?",
+        default=None,
+        help="startup-sequence launch line; omit to just rig the configured "
+        "target(s) (ADF/dir artifacts) and stop -- no startup-sequence, no "
+        "fs-uae/vamos launched",
+    )
     parser.add_argument("args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
@@ -107,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
         args.fsuae_binary or local_layer.get("fsuae_binary") or "/usr/bin/fs-uae"
     )
     fsuae_binary = str(Path(fsuae_binary).expanduser())
-    binary = relativize_binary(args.binary, Path.cwd())
+    binary = relativize_binary(args.binary, Path.cwd()) if args.binary is not None else None
     return run(merged, fsuae_binary, binary, args.args)
 
 

@@ -263,14 +263,13 @@ project:
 
 No templating engine — the existing layering/merge machinery already
 covers what would otherwise need conditionals. `boot.startup` is just
-another mergeable list of AmigaDOS command lines, using the same
-`+key` append rule as `copy:`:
+another mergeable list, using the same `+key` append rule as `copy:`:
 
 ```yaml
 # configs/boot/minimal.yaml
 startup:
-  - "cd Project:"
-  - "{binary} {args}"
+  - text: ["cd Project:", "{binary} {args}"]
+    priority: 90
 
 # configs/boot/debug.yaml
 extends: minimal
@@ -280,11 +279,22 @@ extends: minimal
 "Conditional" lines (e.g. only add `NoBorder` in debug mode) are just a
 question of which profile contributes the line — a profile that
 doesn't extend `debug` never sees it — the same reasoning already used
-for `copy:`. There's no implicit ordering rule (e.g. "launch line is
-always last"): the `"{binary} {args}"` sentinel appears wherever the
-config author places it in the list, exactly like the commented-out
-`Sys:Prefs/Preferences` line in the current script sits after the
-launch line today.
+for `copy:`.
+
+**Item shape and priority**: each `startup:` item is either a bare
+string (one line, default priority) or a mapping `{text, priority}`
+where `text` is a string or a flat list of strings (a block of lines
+sharing one priority — no nesting, every element must be a plain
+string). Priority is a plain int, default `50`; convention is 1–100,
+low = early, high = late. After all layers are merged (`+startup` still
+decides which layer's items participate, and breaks ties between equal
+priorities, since the final sort is stable), the full list is
+stable-sorted by priority before rendering — this is what lets a layer
+insert lines in the *middle* of another layer's contributions, which
+`+startup` alone can't express since it only affects the very back of
+the whole merged list. The `"{binary} {args}"` launch sentinel
+defaults to priority `90`, i.e. late but not last, leaving 90–100 free
+for lines that must run after it (e.g. capturing artifacts).
 
 **Rendering**: each line is passed through a plain `str.format(binary=...,
 args=...)` (or manual placeholder substitution) — safe here since these
@@ -308,7 +318,111 @@ supplying it via copy instead."
 If a real need for runtime-conditional lines (e.g. "include this line
 only if `fsuae.fast_memory > 0`", not expressible as a layering choice)
 shows up later, swapping `.format()` for a per-line Jinja render is a
-contained change — not a reason to add the dependency now.
+contained change — Jinja is already a dependency (see `exec:` below),
+just not wired up here.
+
+## exec: host-side hooks
+
+A rare-but-handy escape hatch: run arbitrary commands on the *host*
+around the rig/run, for things no amount of config can express — e.g.
+generating a key file `copy:` depends on, or capturing an artifact after
+the emulator exits. `amigarig/execspec.py`.
+
+```yaml
+exec:
+  - stage: init                     # init | before | after, default "before"
+    cmd: "keygen -o mykey.bin"      # string -> script; list -> exact argv
+    cwd: project:keys               # normal assign resolution; default: temp dir
+    input: project:keys/seed.bin    # fed to stdin -- non-shell "< file"
+    output: project:keys/mykey      # captures stdout -- non-shell "> file"
+    env:
+      CPU: "{{ config.fsuae.cpu }}" # env values are Jinja-rendered
+    failat: 1                       # return code >= failat aborts the run
+```
+
+- **Stages**, run from `runner.py`: `init` very early, before any target/
+  copy work (so it can produce inputs `copy:` needs); `before` right
+  before the backend launches the emulator; `after` once it returns.
+  `exec:` is an ordinary mergeable list (`+exec` appends, same as
+  `copy:`/`startup:`), items run in merge order within a stage — the
+  whole list is normalized (and thus schema-validated) up front, so a
+  bad `after` item fails fast at `init` time rather than after the
+  emulator has already run.
+- **`cmd`**: a string is written to `$TMPDIR/.exec`, made executable, and
+  run through `$SHELL` (falling back to `/bin/sh`) — i.e. treated as a
+  script. A list is the exact argv, run directly with no shell involved.
+- **Temp dir**: every invocation gets its own fresh scratch dir (from the
+  same factory that mints target dirs); `TMPDIR` is always set to it in
+  the subprocess environment, regardless of `cwd`, so a script can drop
+  generated files there even when it `cd`s elsewhere to run.
+- **`cwd`**: resolved through the normal assign machinery
+  (`AssignTable.resolve` — same as any assign-qualified string elsewhere),
+  *not* Jinja-templated. Defaults to the invocation's temp dir when
+  omitted.
+- **`input`/`output`**: the non-shell equivalent of `< file`/`> file` —
+  mainly for a list `cmd` (exact argv has no shell of its own to
+  redirect with), though they apply to a string `cmd` too. Same
+  resolution as `cwd` (`AssignTable.resolve`, no Jinja); omitted means
+  inherit stdin/stdout normally.
+- **`env`**: values *are* Jinja-rendered (`amigarig/templating.py`), with
+  the full merged config available as `config` (e.g.
+  `"{{ config.fsuae.cpu }}"`) and an `assign` global to expand an amigarig
+  assign to its real host path (`"{{ assign('wb:') }}"`). This is
+  deliberately the only Jinja-templated field — `cmd`/`cwd` stay literal
+  so exec behavior doesn't get too dynamic/hard to reason about; `env` is
+  the sanctioned way to smuggle dynamic values into a script (`$CPU`,
+  etc.) without templating the script itself.
+- **`failat`** (default `1`): the subprocess's return code is compared
+  against this threshold; `>= failat` raises and aborts the run, `<
+  failat` is tolerated. Default of `1` means "any nonzero code fails";
+  raising it tolerates specific known-benign exit codes.
+
+## Backends: fs-uae, vamos, and rig-only
+
+Once targets are built and `copy:`/startup-sequence are written, what
+happens next is a **backend**, selected by the top-level `backend:` config
+key (`fs-uae` default, or `vamos`), dispatched from `runner.py` after
+`boot.run: false` is checked:
+
+- **`fs-uae`** (default): unchanged from before — builds the fs-uae argv
+  (`fsuae.py`) and `os.spawnvp`s it, booting a full synthetic machine off
+  the `boot:` target.
+- **`vamos`**: runs `binary` directly through `amitools.vamos`, in-process
+  (`amitools.vamos.main.main(cfg_dict=...)`, not a subprocess) — vamos
+  emulates the AmigaOS API for a single process rather than booting a
+  whole machine, so there's no CPU/chipset config and no ROM needed. The
+  `boot:` target is still assembled the normal way (`copy: {c, libs,
+  fonts, ...}`) for consistency between backends; vamos just never reads
+  the generated `s/startup-sequence` since it launches `binary` directly
+  instead of booting Workbench — harmless to leave the file generation on
+  regardless. Every amigarig assign that resolves to a real host
+  directory is exposed to vamos as an AmigaOS volume of the same name
+  (`project:`, `boot:`, `wb:`, ...), so `copy_types` written with fs-uae
+  in mind resolve identically. Assigns pointing at a floppy/hdf *image*
+  target can't be mapped this way (vamos volumes are host directories,
+  not amitools disk images) and are skipped with a warning; `project:`/
+  `boot:` need `type: harddrive` to be reachable under vamos. Escape-hatch
+  overrides straight into vamos's own config tree are supported via a
+  `vamos:` config key (deep-merged onto the generated `cfg_dict`, e.g.
+  `vamos: {process: {stack: 32}}`).
+- **backend implementation module**: each backend lives in
+  `amigarig/backends/<name>.py` exposing `run(ctx: RunContext) -> int`;
+  `amigarig/backends/__init__.py` holds the `RunContext` dataclass and
+  `get_backend(name)` dispatch, importing each backend's module lazily so
+  `amitools.vamos` (a fairly heavy import) is only pulled in when
+  actually selected.
+
+**Rig-only mode** (no backend launched at all): the CLI's `binary`
+positional is optional. Omit it entirely (`amigarig --config=... `, no
+trailing binary/args) and amigarig builds the configured `boot:`/
+`project:` targets, skips startup-sequence generation, and stops — no
+fs-uae, no vamos. This is "just rig a floppy or directory and leave it as
+an artifact," and is most useful pointed at a single `boot.keep_as:`
+target rather than the split `boot:`/`project:` setup fs-uae/vamos runs
+normally use. `boot.run: false` remains a separate, backend-level knob
+for "build the target the normal way, but let a CI step decide whether to
+launch the backend" — rig-only mode is the stronger "there's nothing to
+launch" case.
 
 ## Package layout
 
@@ -334,8 +448,13 @@ amigarig/
     adfvolume.py          # ADFVolumeWriter (wraps amitools.fs)
   disktargets.py        # boot/project target assembly: picks writer, drives copy_types + handlers, produces final path(s)
   fsuae.py              # merged config -> fs-uae argv builder (fsuae.* namespace -> --flags)
+  backends/
+    __init__.py           # RunContext dataclass + get_backend(name) dispatch
+    fsuae.py               # fs-uae backend: build argv, os.spawnvp
+    vamos.py                # vamos backend: in-process amitools.vamos.main.main()
   startup.py            # startup-sequence template rendering from merged `boot.startup` lines + binary/args
-  runner.py             # orchestration: resolve config -> build targets -> build argv -> exec or skip (run: false)
+  runner.py             # orchestration: resolve config -> build targets -> write startup-sequence
+                         # -> dispatch to backend (or stop, rig-only mode if no binary given)
 configs/                # checked-in default machine/kickstart/workbench/boot profiles
                          # (see registries above) -- used at dev-time via
                          # AMIGARIG_CONFIG_DIR=./configs; the live configs dir
