@@ -93,7 +93,7 @@ def run_copy(
         handler_names = type_cfg.get("handlers", ["copy"])
 
         for raw_item in raw_items:
-            _, dest_str = normalize_copy_item(raw_item)
+            _, dest_str, _ = normalize_copy_item(raw_item)
             target_name = _dest_target_name(dest_str, type_dest)
             target = targets.get(target_name)
             if target is None:
@@ -105,6 +105,10 @@ def run_copy(
                 resolved = resolve_copy_item(raw_item, type_src, type_dest, assigns, ci)
             except CopyError as e:
                 raise CopyError(f"copy.{type_name}: {e} (item: {raw_item!r})") from None
+
+            if resolved is None:
+                logger.info(f"copy.{type_name}: skipping optional item, not found: {raw_item!r}")
+                continue
 
             for expanded in run_handlers(resolved, handler_names, ctx):
                 logger.info(f"copy: {expanded.source} -> {expanded.dest}")

@@ -8,19 +8,28 @@ from amigarig.fsutil import CaseInsensitiveResolver
 
 
 def test_normalize_bare_string():
-    assert normalize_copy_item("Copy") == ("Copy", "Copy")
+    assert normalize_copy_item("Copy") == ("Copy", "Copy", False)
 
 
 def test_normalize_mapping_defaults_destination_to_source_basename():
-    assert normalize_copy_item({"source": "a/b"}) == ("a/b", "b")
+    assert normalize_copy_item({"source": "a/b"}) == ("a/b", "b", False)
     assert normalize_copy_item({"source": "project:build/libs/music.library"}) == (
         "project:build/libs/music.library",
         "music.library",
+        False,
     )
 
 
 def test_normalize_mapping_explicit_destination():
-    assert normalize_copy_item({"source": "a", "destination": "b"}) == ("a", "b")
+    assert normalize_copy_item({"source": "a", "destination": "b"}) == ("a", "b", False)
+
+
+def test_normalize_mapping_optional():
+    assert normalize_copy_item({"source": "a", "optional": True}) == ("a", "a", True)
+
+
+def test_normalize_mapping_list_source_defaults_dest_to_first_basename():
+    assert normalize_copy_item({"source": ["a/b", "c/d"]}) == (["a/b", "c/d"], "b", False)
 
 
 def test_normalize_bare_qualified_string_defaults_dest_to_basename():
@@ -31,10 +40,12 @@ def test_normalize_bare_qualified_string_defaults_dest_to_basename():
     assert normalize_copy_item("amiga:system-configuration") == (
         "amiga:system-configuration",
         "system-configuration",
+        False,
     )
     assert normalize_copy_item("/abs/path/file.rom") == (
         "/abs/path/file.rom",
         "file.rom",
+        False,
     )
 
 
@@ -94,3 +105,59 @@ def test_resolve_missing_bare_source_raises_clear_copy_error(tmp_path):
 
     with pytest.raises(CopyError, match="NoSuchCommand"):
         resolve_copy_item("NoSuchCommand", "wb:c", "boot:c", assigns, ci)
+
+
+def test_resolve_optional_missing_source_returns_none(tmp_path):
+    wb = tmp_path / "wb31"
+    (wb / "c").mkdir(parents=True)
+    boot = tmp_path / "boot"
+
+    assigns = AssignTable({"wb": str(wb), "boot": str(boot)})
+    ci = CaseInsensitiveResolver()
+
+    item = resolve_copy_item(
+        {"source": "NoSuchCommand", "optional": True}, "wb:c", "boot:c", assigns, ci
+    )
+    assert item is None
+
+
+def test_resolve_list_source_uses_first_match(tmp_path):
+    wb = tmp_path / "wb31"
+    (wb / "c").mkdir(parents=True)
+    (wb / "c" / "copy").write_text("bin")
+    boot = tmp_path / "boot"
+
+    assigns = AssignTable({"wb": str(wb), "boot": str(boot)})
+    ci = CaseInsensitiveResolver()
+
+    item = resolve_copy_item(
+        {"source": ["NoSuchCommand", "Copy"]}, "wb:c", "boot:c", assigns, ci
+    )
+    assert item.source == wb / "c" / "copy"
+    assert item.dest == boot / "c" / "NoSuchCommand"
+
+
+def test_resolve_list_source_all_missing_raises(tmp_path):
+    wb = tmp_path / "wb31"
+    (wb / "c").mkdir(parents=True)
+    boot = tmp_path / "boot"
+
+    assigns = AssignTable({"wb": str(wb), "boot": str(boot)})
+    ci = CaseInsensitiveResolver()
+
+    with pytest.raises(CopyError):
+        resolve_copy_item({"source": ["Nope1", "Nope2"]}, "wb:c", "boot:c", assigns, ci)
+
+
+def test_resolve_list_source_all_missing_and_optional_returns_none(tmp_path):
+    wb = tmp_path / "wb31"
+    (wb / "c").mkdir(parents=True)
+    boot = tmp_path / "boot"
+
+    assigns = AssignTable({"wb": str(wb), "boot": str(boot)})
+    ci = CaseInsensitiveResolver()
+
+    item = resolve_copy_item(
+        {"source": ["Nope1", "Nope2"], "optional": True}, "wb:c", "boot:c", assigns, ci
+    )
+    assert item is None

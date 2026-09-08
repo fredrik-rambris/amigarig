@@ -34,8 +34,9 @@ def _basename(value: str) -> str:
     return PurePosixPath(rest).name if rest else PurePosixPath(value).name
 
 
-def normalize_copy_item(raw) -> tuple[str, str]:
-    """Bare string or {source, destination} mapping -> (source_str, dest_str).
+def normalize_copy_item(raw) -> tuple[str | list[str], str, bool]:
+    """Bare string or {source, destination, optional} mapping ->
+    (source_str_or_list, dest_str, optional).
 
     A *qualified* source (absolute host path, or assign-qualified like
     "amiga:system-configuration") always defaults its destination to just
@@ -45,15 +46,21 @@ def normalize_copy_item(raw) -> tuple[str, str]:
     names instead of the type's normal destination. Only a plain bare name
     (already relative to the type's default src/dest roots) reuses the same
     string for both sides.
+
+    ``source`` may also be a list of candidate strings, tried in order
+    until one resolves; the basename used for the default destination is
+    taken from the first candidate.
     """
     if isinstance(raw, str):
         if _is_qualified(raw):
-            return raw, _basename(raw)
-        return raw, raw
+            return raw, _basename(raw), False
+        return raw, raw, False
     if isinstance(raw, dict):
         source = raw["source"]
-        dest = raw.get("destination", _basename(source))
-        return source, dest
+        first = source[0] if isinstance(source, list) else source
+        dest = raw.get("destination", _basename(first))
+        optional = bool(raw.get("optional", False))
+        return source, dest, optional
     raise TypeError(f"copy item must be a string or mapping, got {raw!r}")
 
 
@@ -104,8 +111,26 @@ def resolve_copy_item(
     type_dest: str,
     assigns: AssignTable,
     ci: CaseInsensitiveResolver,
-) -> ResolvedCopyItem:
-    source_str, dest_str = normalize_copy_item(raw)
-    source = resolve_side(source_str, type_src, assigns, ci, must_exist=True)
+) -> ResolvedCopyItem | None:
+    """Returns None if the item is optional and none of its candidate
+    sources could be found."""
+    source_val, dest_str, optional = normalize_copy_item(raw)
+    candidates = source_val if isinstance(source_val, list) else [source_val]
+
+    source = None
+    last_error: CopyError | None = None
+    for candidate in candidates:
+        try:
+            source = resolve_side(candidate, type_src, assigns, ci, must_exist=True)
+            last_error = None
+            break
+        except CopyError as e:
+            last_error = e
+
+    if source is None:
+        if optional:
+            return None
+        raise last_error
+
     dest = resolve_side(dest_str, type_dest, assigns, ci, must_exist=False)
     return ResolvedCopyItem(source=source, dest=dest)
